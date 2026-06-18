@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -14,6 +15,8 @@ class Category(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     slug: Mapped[str] = mapped_column(String(140), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     subcategories: Mapped[list["Subcategory"]] = relationship(back_populates="category")
 
@@ -28,30 +31,73 @@ class Subcategory(Base, TimestampMixin):
     __table_args__ = (UniqueConstraint("category_id", "slug"),)
 
 
+class BikeModel(Base, TimestampMixin):
+    __tablename__ = "bike_models"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    slug: Mapped[str] = mapped_column(String(180), unique=True, index=True)
+    brand: Mapped[str] = mapped_column(String(120), default="Royal Enfield")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class Product(Base, TimestampMixin):
     __tablename__ = "products"
     id: Mapped[int] = mapped_column(primary_key=True)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"))
     subcategory_id: Mapped[int | None] = mapped_column(ForeignKey("subcategories.id"), nullable=True)
+    product_code: Mapped[str | None] = mapped_column(String(120), unique=True, nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(180), index=True)
     slug: Mapped[str] = mapped_column(String(200), unique=True, index=True)
     description: Mapped[str] = mapped_column(Text)
+    short_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    full_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    specifications: Mapped[str | None] = mapped_column(Text, nullable=True)
+    installation_guide: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hsn_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    sku: Mapped[str | None] = mapped_column(String(120), unique=True, nullable=True, index=True)
     price: Mapped[float] = mapped_column(Numeric(10, 2))
     compare_at_price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    discount_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    discount_value: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    inventory_tracking: Mapped[bool] = mapped_column(Boolean, default=True)
+    variant_stock_tracking: Mapped[bool] = mapped_column(Boolean, default=True)
+    supported_bike_models: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
     images: Mapped[list["ProductImage"]] = relationship(cascade="all, delete-orphan")
     variants: Mapped[list["ProductVariant"]] = relationship(cascade="all, delete-orphan")
+
+    @property
+    def bike_models_list(self) -> list[str]:
+        if not self.supported_bike_models:
+            return []
+        try:
+            parsed = json.loads(self.supported_bike_models)
+            return parsed if isinstance(parsed, list) else []
+        except json.JSONDecodeError:
+            return []
+
+    @property
+    def specifications_list(self) -> list[dict[str, str]]:
+        if not self.specifications:
+            return []
+        try:
+            parsed = json.loads(self.specifications)
+            return parsed if isinstance(parsed, list) else []
+        except json.JSONDecodeError:
+            return []
 
 
 class ProductImage(Base, TimestampMixin):
     __tablename__ = "product_images"
     id: Mapped[int] = mapped_column(primary_key=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
+    variant_id: Mapped[int | None] = mapped_column(ForeignKey("product_variants.id"), nullable=True)
     url: Mapped[str] = mapped_column(String(500))
     alt: Mapped[str] = mapped_column(String(180), default="")
     media_type: Mapped[str] = mapped_column(String(40), default="image")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_thumbnail: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class ProductVariant(Base, TimestampMixin):
@@ -60,10 +106,23 @@ class ProductVariant(Base, TimestampMixin):
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
     sku: Mapped[str] = mapped_column(String(120), unique=True)
     color: Mapped[str] = mapped_column(String(80))
+    color_hex: Mapped[str] = mapped_column(String(20), default="#090909")
     material: Mapped[str] = mapped_column(String(120))
     size: Mapped[str] = mapped_column(String(80))
     price: Mapped[float] = mapped_column(Numeric(10, 2))
     stock: Mapped[int] = mapped_column(Integer, default=0)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    images: Mapped[list["VariantImage"]] = relationship(cascade="all, delete-orphan")
+
+
+class VariantImage(Base, TimestampMixin):
+    __tablename__ = "variant_images"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    variant_id: Mapped[int] = mapped_column(ForeignKey("product_variants.id"))
+    url: Mapped[str] = mapped_column(String(500))
+    alt: Mapped[str] = mapped_column(String(180), default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_thumbnail: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class ProductMaterial(Base, TimestampMixin):
@@ -116,10 +175,12 @@ class Order(Base, TimestampMixin):
     razorpay_order_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     razorpay_payment_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     subtotal: Mapped[float] = mapped_column(Numeric(10, 2))
+    discount: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     tax: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     shipping: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     total: Mapped[float] = mapped_column(Numeric(10, 2))
     items: Mapped[list["OrderItem"]] = relationship(cascade="all, delete-orphan")
+    shipping_address: Mapped["ShippingAddress"] = relationship()
 
 
 class OrderItem(Base, TimestampMixin):
@@ -131,6 +192,9 @@ class OrderItem(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(180))
     quantity: Mapped[int] = mapped_column(Integer)
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2))
+    color: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    bike_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    variant_sku: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
 
 class Coupon(Base, TimestampMixin):
@@ -163,8 +227,11 @@ class Banner(Base, TimestampMixin):
     __tablename__ = "banners"
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(180))
+    subtitle: Mapped[str | None] = mapped_column(String(300), nullable=True)
     image_url: Mapped[str] = mapped_column(String(500))
     href: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    section: Mapped[str] = mapped_column(String(80), default="hero")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 

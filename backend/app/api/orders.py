@@ -1,26 +1,54 @@
 import secrets
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select
-from sqlalchemy.orm import Session
-from backend.app.db.session import get_db
-from backend.app.models.entities import Order, OrderItem, Product, ProductVariant, ShippingAddress
-from backend.app.schemas.common import CheckoutIn, RazorpayVerifyIn
+from sqlalchemy.orm import Session, selectinload
 from backend.app.core.config import settings
+from backend.app.db.session import get_db
+from backend.app.models.entities import Coupon, Order, OrderItem, Product, ProductImage, ProductVariant, ShippingAddress, VariantImage
+from backend.app.schemas.common import CheckoutIn, OrderOut, RazorpayVerifyIn
 from backend.app.services.catalog import resolve_product_identifier
 from backend.app.services.payments import PaymentOrderError, create_payment_order, verify_payment_signature, verify_webhook
+from backend.app.services.pricing import calculate_discounted_price, calculate_line_total
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 
+def _variant_image(variant: ProductVariant | None) -> str | None:
+    if not variant or not variant.images:
+        return None
+    images = sorted(variant.images, key=lambda item: item.sort_order)
+    thumb = next((image.url for image in images if image.is_thumbnail), None)
+    return thumb or images[0].url
+
+
+def _product_image(db: Session, product: Product) -> str | None:
+    image = db.scalar(
+        select(ProductImage)
+        .where(ProductImage.product_id == product.id)
+        .order_by(ProductImage.is_thumbnail.desc(), ProductImage.sort_order.asc())
+    )
+    return image.url if image else None
+
+
 @router.post("/checkout")
 def checkout(payload: CheckoutIn, db: Session = Depends(get_db)):
-    subtotal = 0
-    order_lines: list[tuple[Product, ProductVariant | None, int, float]] = []
+    subtotal = 0.0
+    discount_total = 0.0
+    order_lines: list[tuple[Product, ProductVariant | None, int, float, float, str | None, str | None]] = []
+
     for item in payload.items:
         product_slug = resolve_product_identifier(item.product_id)
-        product = db.scalar(select(Product).where(Product.slug == product_slug, Product.is_active == True))
+        product = db.scalar(
+            select(Product)
+            .options(selectinload(Product.variants))
+            .where(Product.slug == product_slug, Product.is_active == True)
+        )
         if not product:
-            raise HTTPException(status_code=404, detail=f"Product not found: {item.product_id}. Refresh product data and try again.")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Product not found: {item.product_id}. Refresh product data and try again.",
+            )
+
         variant = None
         unit_price = float(product.price)
         if item.variant_id:
@@ -28,34 +56,78 @@ def checkout(payload: CheckoutIn, db: Session = Depends(get_db)):
             if not variant or variant.product_id != product.id:
                 raise HTTPException(status_code=400, detail="Invalid product variant")
             unit_price = float(variant.price)
-        subtotal += unit_price * item.quantity
-        order_lines.append((product, variant, item.quantity, unit_price))
-    tax = round(subtotal * 0.18, 2)
+            if product.variant_stock_tracking and variant.stock < item.quantity:
+                raise HTTPException(status_code=400, detail=f"Insufficient stock for {variant.color}")
+        elif product.variant_stock_tracking:
+            default_variant = next((v for v in product.variants if v.is_default), product.variants[0] if product.variants else None)
+            if default_variant and default_variant.stock < item.quantity:
+                raise HTTPException(status_code=400, detail="Insufficient stock for selected product")
+
+        discounted_unit = calculate_discounted_price(unit_price, product.discount_type, float(product.discount_value or 0))
+        line_discount = (unit_price - discounted_unit) * item.quantity
+        subtotal += calculate_line_total(discounted_unit, item.quantity)
+        discount_total += line_discount
+        order_lines.append(
+            (
+                product,
+                variant,
+                item.quantity,
+                discounted_unit,
+                line_discount,
+                variant.color if variant else None,
+                item.bike_model,
+            )
+        )
+
+    coupon_discount = 0.0
+    if payload.coupon_code:
+        coupon = db.scalar(
+            select(Coupon).where(Coupon.code == payload.coupon_code.upper(), Coupon.is_active == True)
+        )
+        if coupon:
+            if coupon.discount_type == "percent":
+                coupon_discount = round(subtotal * float(coupon.value) / 100, 2)
+            else:
+                coupon_discount = float(coupon.value)
+
+    discount_total += coupon_discount
     shipping = 0 if subtotal >= 999 else 199
-    total = subtotal + tax + shipping
+    tax = 0
+    total = round(subtotal - coupon_discount + shipping, 2)
+
     address = ShippingAddress(**payload.address.model_dump())
     db.add(address)
     db.flush()
     order = Order(
         order_number=f"OTR{secrets.randbelow(89999) + 10000}",
         shipping_address_id=address.id,
-        subtotal=subtotal,
+        subtotal=round(subtotal, 2),
+        discount=round(discount_total, 2),
         tax=tax,
         shipping=shipping,
         total=total,
-        payment_method=payload.payment_method
+        payment_method=payload.payment_method,
     )
     db.add(order)
     db.flush()
-    for product, variant, quantity, unit_price in order_lines:
-        db.add(OrderItem(
-            order_id=order.id,
-            product_id=product.id,
-            variant_id=variant.id if variant else None,
-            name=product.name,
-            quantity=quantity,
-            unit_price=unit_price
-        ))
+
+    for product, variant, quantity, unit_price, _, color, bike_model in order_lines:
+        db.add(
+            OrderItem(
+                order_id=order.id,
+                product_id=product.id,
+                variant_id=variant.id if variant else None,
+                name=product.name,
+                quantity=quantity,
+                unit_price=unit_price,
+                color=color,
+                bike_model=bike_model,
+                variant_sku=variant.sku if variant else product.sku,
+            )
+        )
+        if variant and product.variant_stock_tracking:
+            variant.stock = max(variant.stock - quantity, 0)
+
     if payload.payment_method == "razorpay":
         try:
             payment_order = create_payment_order(total, order.order_number)
@@ -69,7 +141,61 @@ def checkout(payload: CheckoutIn, db: Session = Depends(get_db)):
         "order_number": order.order_number,
         "razorpay_order_id": order.razorpay_order_id,
         "razorpay_key_id": settings.razorpay_key_id.strip(),
-        "total": total
+        "subtotal": order.subtotal,
+        "discount": order.discount,
+        "shipping": order.shipping,
+        "tax": order.tax,
+        "total": total,
+    }
+
+
+@router.get("/{order_number}", response_model=OrderOut)
+def get_order(order_number: str, db: Session = Depends(get_db)):
+    order = db.scalar(
+        select(Order)
+        .options(
+            selectinload(Order.items),
+            selectinload(Order.shipping_address),
+        )
+        .where(Order.order_number == order_number)
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    items_out = []
+    for item in order.items:
+        product = db.get(Product, item.product_id)
+        variant = db.get(ProductVariant, item.variant_id) if item.variant_id else None
+        if variant:
+            db.refresh(variant, attribute_names=["images"])
+        image = _variant_image(variant) if variant else None
+        if not image and product:
+            image = _product_image(db, product)
+        items_out.append(
+            {
+                "name": item.name,
+                "quantity": item.quantity,
+                "unit_price": float(item.unit_price),
+                "line_total": round(float(item.unit_price) * item.quantity, 2),
+                "color": item.color,
+                "bike_model": item.bike_model,
+                "variant_sku": item.variant_sku,
+                "image": image,
+            }
+        )
+
+    return {
+        "order_number": order.order_number,
+        "status": order.status,
+        "payment_status": order.payment_status,
+        "payment_method": order.payment_method,
+        "subtotal": float(order.subtotal),
+        "discount": float(order.discount),
+        "shipping": float(order.shipping),
+        "tax": float(order.tax),
+        "total": float(order.total),
+        "items": items_out,
+        "created_at": order.created_at.isoformat() if order.created_at else None,
     }
 
 

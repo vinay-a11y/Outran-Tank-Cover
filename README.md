@@ -31,3 +31,7 @@ FastAPI REST API with SQLAlchemy models for products, categories, subcategories,
 - Database: MySQL
 - Media: Cloudinary
 - Payments: Razorpay
+
+## Admin API
+
+Product management endpoints live under `/api/admin/products` and require the `X-Admin-Key` header matching `ADMIN_API_KEY` in `backend/.env`.
