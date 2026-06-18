@@ -1,55 +1,61 @@
+import { Suspense } from "react";
 import { ProductCard } from "@/components/product-card";
 import { CinematicHero } from "@/components/cinematic-hero";
+import { ProductFiltersPanel } from "@/components/product-filters";
 import { TrustBand } from "@/components/trust-band";
-import { getProducts } from "@/lib/api";
+import { getProductFilters, getProducts, type ProductQuery } from "@/lib/api";
 
-const filterGroups = {
-  "Bike model": ["Himalayan 450"],
-  Material: ["1000D Waterproof Fabric"],
-  Features: ["100% Waterproof", "Zero Tank Wobble", "Easy fuel cap", "Quick lock buckles"],
-  Color: ["Stealth Black", "Black / Orange Stitch", "Trail Green"]
-};
+type SearchParams = Promise<{
+  category?: string;
+  search?: string;
+  bike_model?: string;
+  color?: string;
+  stock_status?: string;
+  sort?: string;
+}>;
 
-export default async function ProductsPage() {
-  const products = await getProducts();
+export default async function ProductsPage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const query: ProductQuery = {
+    category: params.category,
+    search: params.search,
+    bike_model: params.bike_model,
+    color: params.color,
+    stock_status: params.stock_status,
+    sort: params.sort || "featured",
+  };
+  const [products, filters] = await Promise.all([getProducts(query), getProductFilters()]);
 
   return (
     <main>
-      <CinematicHero eyebrow="Our product" title="Tank Cover" copy="One focused system for Himalayan 450. Waterproof, stable, and trail-tested." image="/assets/feature-quick-lock.png" compact />
+      <CinematicHero
+        eyebrow="Shop"
+        title="Tank Covers"
+        copy="Precision-fit protection engineered for your bike. Filter by model, color, and availability."
+        image="/assets/feature-quick-lock.png"
+        compact
+      />
       <TrustBand />
       <section className="container-x grid gap-6 py-10 lg:grid-cols-[250px_1fr]">
-        <aside className="cinematic-panel h-max p-4">
-          <div className="flex items-center justify-between border-b border-border-primary pb-3">
-            <h2 className="font-display text-2xl uppercase">Filters</h2>
-            <span className="text-xs font-black uppercase text-accent-primary">1 product</span>
-          </div>
-          {Object.entries(filterGroups).map(([title, items]) => (
-            <div key={title} className="border-b border-border-primary py-4">
-              <p className="mb-3 text-xs font-black uppercase">{title}</p>
-              <div className="grid gap-2.5">
-                {items.map((item, index) => (
-                  <label key={item} className="flex items-center justify-between text-sm text-text-secondary">
-                    <span className="flex items-center gap-3">
-                      <input type="checkbox" defaultChecked className="accent-accent-primary" />
-                      {item}
-                    </span>
-                    <span>{index === 0 ? 1 : ""}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
-        </aside>
+        <Suspense fallback={<div className="cinematic-panel h-40 animate-pulse p-4" />}>
+          <ProductFiltersPanel filters={filters} productCount={products.length} />
+        </Suspense>
         <div>
           <div className="mb-5 flex items-center justify-between">
-            <p className="text-sm uppercase text-text-secondary">Home / Shop / Himalayan 450 Tank Cover</p>
-            <select className="border border-border-primary bg-black/40 px-4 py-2.5 text-sm uppercase">
-              <option>Featured</option>
-            </select>
+            <p className="text-sm uppercase text-text-secondary">Home / Shop / Tank Covers</p>
           </div>
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {products.map((product) => <ProductCard key={product.id} product={product} />)}
-          </div>
+          {products.length === 0 ? (
+            <div className="cinematic-panel p-8 text-center">
+              <h2 className="font-display text-3xl uppercase">No products match your filters</h2>
+              <p className="mt-2 text-text-secondary">Try clearing filters or searching with a different bike model.</p>
+            </div>
+          ) : (
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {products.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </main>

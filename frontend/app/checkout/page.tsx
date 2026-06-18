@@ -50,15 +50,11 @@ function loadRazorpayScript(): Promise<boolean> {
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, clear } = useCart();
+  const { items, clear, subtotal, discountTotal, shipping, total } = useCart();
   const [address, setAddress] = useState(initialAddress);
   const [status, setStatus] = useState("");
   const [razorpayReady, setRazorpayReady] = useState(false);
   const [loading, setLoading] = useState(false);
-  const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const shipping = subtotal >= 999 || subtotal === 0 ? 0 : 199;
-  const tax = Math.round(subtotal * .18);
-  const total = subtotal + shipping + tax;
 
   async function submitOrder() {
     if (items.length === 0) {
@@ -189,20 +185,28 @@ export default function CheckoutPage() {
                 <div className="relative aspect-square overflow-hidden"><Image src={item.image} alt={item.name} fill className="object-cover" /></div>
                 <div>
                   <p className="font-black">{item.name}</p>
-                  <p className="text-sm text-text-secondary">{item.subtitle}<br />{item.color}<br />Qty: {item.qty}</p>
+                  <p className="text-sm text-text-secondary">
+                    {item.subtitle}
+                    <br />
+                    {item.color} · {item.bike_model}
+                    <br />
+                    Qty: {item.qty}
+                  </p>
                 </div>
                 <p className="font-black">{formatINR(item.price * item.qty)}</p>
               </div>
             ))}
           </div>
           <div className="mt-6 grid gap-3 border-y border-border-primary py-5 text-sm">
-            <div className="flex justify-between"><span>Subtotal</span><span>{formatINR(subtotal)}</span></div>
-            <div className="flex justify-between"><span>Shipping</span><span>{shipping === 0 ? "FREE" : formatINR(shipping)}</span></div>
-            <div className="flex justify-between"><span>Tax (GST 18%)</span><span>{formatINR(tax)}</span></div>
+            <div className="flex justify-between"><span>Subtotal</span><span>{formatINR(subtotal())}</span></div>
+            {discountTotal() > 0 && (
+              <div className="flex justify-between text-success"><span>Savings</span><span>-{formatINR(discountTotal())}</span></div>
+            )}
+            <div className="flex justify-between"><span>Shipping</span><span>{shipping() === 0 ? "FREE" : formatINR(shipping())}</span></div>
           </div>
           <div className="mt-6 flex justify-between">
             <span className="font-black">Total Amount</span>
-            <span className="text-3xl font-black text-accent-primary">{formatINR(total)}</span>
+            <span className="text-3xl font-black text-accent-primary">{formatINR(total())}</span>
           </div>
           <button onClick={submitOrder} disabled={loading || items.length === 0} className="mt-6 flex w-full items-center justify-center gap-3 bg-accent-primary px-6 py-3.5 text-sm font-black uppercase text-bg-primary disabled:cursor-not-allowed disabled:opacity-50">
             <LockKeyhole size={17} /> {loading ? "Creating order..." : "Pay securely"} <ArrowRight size={17} />
