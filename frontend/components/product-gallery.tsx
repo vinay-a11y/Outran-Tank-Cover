@@ -1,12 +1,16 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ZoomIn } from "lucide-react";
 
 export function ProductGallery({ images, alt }: { images: string[]; alt: string }) {
-  const gallery = images.length ? images : ["/assets/feature-quick-lock.png"];
+  const gallery = useMemo(() => (images.length ? images : ["/assets/feature-quick-lock.png"]), [images]);
   const [active, setActive] = useState(gallery[0]);
+
+  useEffect(() => {
+    setActive(gallery[0]);
+  }, [gallery]);
 
   return (
     <div className="grid gap-3">
@@ -19,15 +23,50 @@ export function ProductGallery({ images, alt }: { images: string[]; alt: string 
           <ZoomIn size={18} />
         </button>
       </div>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">
         {gallery.map((image, index) => (
           <button
-            key={image}
+            key={`${image}-${index}`}
             onClick={() => setActive(image)}
             className={`relative aspect-[4/3] overflow-hidden border bg-black ${active === image ? "border-accent-primary" : "border-border-primary"}`}
             aria-label={`Show product image ${index + 1}`}
           >
             <Image src={image} alt="" fill className="object-cover" sizes="25vw" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function ProductGallerySwitcher({
+  variants,
+  selectedVariantId,
+  onVariantChange,
+  alt,
+}: {
+  variants: Array<{ id: number; color: string; images: Array<{ url: string }> }>;
+  selectedVariantId: number;
+  onVariantChange: (variantId: number) => void;
+  alt: string;
+}) {
+  const selected = variants.find((variant) => variant.id === selectedVariantId) ?? variants[0];
+  const gallery = selected?.images?.map((image) => image.url) ?? [];
+
+  return (
+    <div className="grid gap-4">
+      <ProductGallery images={gallery} alt={alt} />
+      <div className="flex flex-wrap gap-2">
+        {variants.map((variant) => (
+          <button
+            key={variant.id}
+            type="button"
+            onClick={() => onVariantChange(variant.id)}
+            className={`border px-3 py-1.5 text-[10px] font-black uppercase ${
+              selectedVariantId === variant.id ? "border-accent-primary text-accent-primary" : "border-border-primary"
+            }`}
+          >
+            {variant.color}
           </button>
         ))}
       </div>
