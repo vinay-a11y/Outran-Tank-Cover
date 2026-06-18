@@ -280,6 +280,9 @@ def seed_catalog(db: Session) -> None:
     for order, (url, alt, is_thumb) in enumerate(PRODUCT_IMAGES):
         db.add(ProductImage(product_id=product.id, url=url, alt=alt, sort_order=order, is_thumbnail=is_thumb))
 
+    variant_ids = [variant.id for variant in db.query(ProductVariant).filter(ProductVariant.product_id == product.id).all()]
+    if variant_ids:
+        db.query(VariantImage).filter(VariantImage.variant_id.in_(variant_ids)).delete()
     db.query(ProductVariant).filter(ProductVariant.product_id == product.id).delete()
     for variant_data in VARIANT_SEED:
         variant = ProductVariant(

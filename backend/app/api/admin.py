@@ -55,6 +55,9 @@ def _save_product_images(db: Session, product_id: int, images: list) -> None:
 
 
 def _save_variants(db: Session, product_id: int, variants: list) -> None:
+    variant_ids = [variant.id for variant in db.query(ProductVariant).filter(ProductVariant.product_id == product_id).all()]
+    if variant_ids:
+        db.query(VariantImage).filter(VariantImage.variant_id.in_(variant_ids)).delete()
     db.query(ProductVariant).filter(ProductVariant.product_id == product_id).delete()
     for variant_in in variants:
         variant = ProductVariant(

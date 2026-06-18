@@ -2,6 +2,17 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
 
+CATEGORY_COLUMNS = {
+    "description": "TEXT",
+    "image_url": "VARCHAR(500)",
+}
+
+BANNER_COLUMNS = {
+    "subtitle": "VARCHAR(300)",
+    "section": "VARCHAR(80) DEFAULT 'hero'",
+    "sort_order": "INTEGER DEFAULT 0",
+}
+
 PRODUCT_COLUMNS = {
     "product_code": "VARCHAR(120)",
     "short_description": "TEXT",
@@ -56,6 +67,8 @@ def _add_columns(engine: Engine, table: str, columns: dict[str, str]) -> None:
 
 
 def run_migrations(engine: Engine) -> None:
+    _add_columns(engine, "categories", CATEGORY_COLUMNS)
+    _add_columns(engine, "banners", BANNER_COLUMNS)
     _add_columns(engine, "products", PRODUCT_COLUMNS)
     _add_columns(engine, "product_variants", VARIANT_COLUMNS)
     _add_columns(engine, "product_images", IMAGE_COLUMNS)
