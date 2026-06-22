@@ -5,7 +5,7 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, selectinload
 
-from backend.app.api.products import get_product, product_availability
+from backend.app.api.products import get_product, list_products, product_availability
 from backend.app.db.migrate import run_migrations
 from backend.app.models.entities import Base, Product, ProductVariant
 from backend.app.services.catalog import TANK_COVER_SLUG, seed_catalog
@@ -24,8 +24,10 @@ class ProductsApiTest(unittest.TestCase):
                 seed_catalog(db)
                 payload = get_product(TANK_COVER_SLUG, db)
                 availability = product_availability(TANK_COVER_SLUG, db)
+                all_products = list_products(limit=100, offset=0, db=db)
 
                 self.assertEqual(payload["id"], TANK_COVER_SLUG)
+                self.assertEqual(len(all_products), 3)
                 self.assertEqual(payload["product_id"], "OTR-TC-H450")
                 self.assertGreaterEqual(len(payload["gallery"]), 4)
                 self.assertEqual(len(payload["colors"]), 3)

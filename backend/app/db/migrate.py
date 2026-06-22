@@ -46,6 +46,7 @@ ORDER_ITEM_COLUMNS = {
 
 ORDER_COLUMNS = {
     "discount": "NUMERIC(10,2) DEFAULT 0",
+    "user_id": "VARCHAR(36)",
 }
 
 

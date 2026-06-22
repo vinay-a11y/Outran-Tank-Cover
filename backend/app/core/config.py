@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     cloudinary_api_key: str = ""
     cloudinary_api_secret: str = ""
     admin_api_key: str = ""
+    google_client_id: str = ""
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24 * 7
+    auth_cookie_name: str = "outran_access_token"
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: str = "lax"
 
 
 settings = Settings()

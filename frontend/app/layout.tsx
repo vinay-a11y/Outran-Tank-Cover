@@ -6,20 +6,20 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://outran.in"),
   title: {
-    default: "OUTRAN Tank Cover System",
+    default: "OUTRAN SYSTEM",
     template: "%s | OUTRAN"
   },
-  description: "Premium tactical motorcycle tank cover system for Himalayan 450. Built for the ride beyond roads.",
+  description: "Premium tactical motorcycle tank cover system for Himalayan 450. Built to ride safe.",
   openGraph: {
-    title: "OUTRAN Tank Cover System",
-    description: "Built for the ride beyond roads.",
+    title: "OUTRAN SYSTEM",
+    description: "Built to ride safe.",
     images: ["/assets/hero-page.png"],
     type: "website"
   },
   twitter: {
     card: "summary_large_image",
-    title: "OUTRAN Tank Cover System",
-    description: "Built for the ride beyond roads.",
+    title: "OUTRAN SYSTEM",
+    description: "Built to ride safe.",
     images: ["/assets/hero-page.png"]
   },
   icons: {

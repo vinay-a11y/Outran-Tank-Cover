@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { getProduct } from "@/lib/api";
 
 const CANONICAL_PRODUCT_ID = "terrain-core-tank-cover";
 const LEGACY_PRODUCT_IDS = new Set(["terrain-core", "tank-cover", "himalayan-tank-cover"]);
@@ -30,6 +31,7 @@ type CartState = {
   addItem: (item: Omit<CartItem, "lineId" | "qty"> & { qty?: number }) => void;
   removeItem: (lineId: string) => void;
   updateQty: (lineId: string, qty: number) => void;
+  setItems: (items: CartItem[]) => void;
   clear: () => void;
   subtotal: () => number;
   discountTotal: () => number;
@@ -41,10 +43,13 @@ function buildLineId(productId: string, variantId: number, bikeModel: string) {
   return `${productId}:${variantId}:${bikeModel}`;
 }
 
-function normalizeLegacyItem(item: CartItem): CartItem {
+function normalizeLegacyItem(item: CartItem): CartItem | null {
   const productId = LEGACY_PRODUCT_IDS.has(item.id) ? CANONICAL_PRODUCT_ID : item.id;
-  const variantId = item.variant_id ?? 0;
   const bikeModel = item.bike_model ?? "Royal Enfield Himalayan 450";
+  if (!item.variant_sku && (!item.variant_id || item.variant_id <= 0)) {
+    return null;
+  }
+  const variantId = item.variant_id > 0 ? item.variant_id : 0;
   return {
     ...item,
     lineId: item.lineId ?? buildLineId(productId, variantId, bikeModel),
@@ -63,6 +68,7 @@ export const useCart = create<CartState>()(
       items: [],
       addItem: (incoming) =>
         set((state) => {
+          if (!incoming.variant_sku || incoming.variant_id <= 0) return state;
           const qty = incoming.qty ?? 1;
           const lineId = buildLineId(incoming.id, incoming.variant_id, incoming.bike_model);
           const cappedQty = Math.min(qty, incoming.max_qty);
@@ -95,6 +101,7 @@ export const useCart = create<CartState>()(
               : item
           ),
         })),
+      setItems: (items) => set({ items }),
       clear: () => set({ items: [] }),
       subtotal: () => get().items.reduce((sum, item) => sum + item.price * item.qty, 0),
       discountTotal: () =>
@@ -107,12 +114,14 @@ export const useCart = create<CartState>()(
     }),
     {
       name: "outran-cart",
-      version: 3,
+      version: 4,
       migrate: (persistedState) => {
         const state = persistedState as CartState;
         return {
           ...state,
-          items: (state.items ?? []).map(normalizeLegacyItem),
+          items: (state.items ?? [])
+            .map(normalizeLegacyItem)
+            .filter((item): item is CartItem => item !== null),
         };
       },
       merge: (persistedState, currentState) => {
@@ -120,7 +129,9 @@ export const useCart = create<CartState>()(
         return {
           ...currentState,
           ...state,
-          items: (state.items ?? currentState.items).map(normalizeLegacyItem),
+          items: (state.items ?? currentState.items)
+            .map(normalizeLegacyItem)
+            .filter((item): item is CartItem => item !== null),
         };
       },
     }
@@ -168,4 +179,30 @@ export function buildCartItemFromProduct(
     bike_model: bikeModel,
     max_qty: Math.max(variant.stock, 1),
   };
+}
+
+export async function syncCartWithBackend(items: CartItem[]): Promise<CartItem[]> {
+  const synced: CartItem[] = [];
+  for (const item of items) {
+    try {
+      const product = await getProduct(item.id);
+      const variant =
+        product.variants.find((entry) => entry.sku === item.variant_sku) ??
+        product.variants.find((entry) => entry.color === item.color) ??
+        product.variants.find((entry) => entry.is_default) ??
+        product.variants[0];
+      if (!variant || variant.stock <= 0) continue;
+      const bikeModel = product.supported_bike_models.includes(item.bike_model)
+        ? item.bike_model
+        : product.supported_bike_models[0] ?? item.bike_model;
+      synced.push({
+        ...buildCartItemFromProduct(product, variant, bikeModel),
+        lineId: buildLineId(product.id, variant.id, bikeModel),
+        qty: Math.min(item.qty, variant.stock),
+      });
+    } catch {
+      continue;
+    }
+  }
+  return synced;
 }

@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import datetime
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -8,6 +9,54 @@ from backend.app.db.session import Base
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+def new_uuid() -> str:
+    return str(uuid.uuid4())
+
+
+class User(Base, TimestampMixin):
+    __tablename__ = "users"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    google_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    phone_number: Mapped[str | None] = mapped_column(String(30), unique=True, nullable=True, index=True)
+    profile_image: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    is_phone_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class CartItem(Base, TimestampMixin):
+    __tablename__ = "cart_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    product_id: Mapped[str] = mapped_column(String(200))
+    variant_id: Mapped[int | None] = mapped_column(ForeignKey("product_variants.id"), nullable=True)
+    variant_sku: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    bike_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    __table_args__ = (UniqueConstraint("user_id", "product_id", "variant_sku", "bike_model"),)
+
+
+class UserAddress(Base, TimestampMixin):
+    __tablename__ = "user_addresses"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    full_name: Mapped[str] = mapped_column(String(160))
+    phone: Mapped[str] = mapped_column(String(30))
+    email: Mapped[str] = mapped_column(String(160))
+    address: Mapped[str] = mapped_column(Text)
+    city: Mapped[str] = mapped_column(String(120))
+    state: Mapped[str] = mapped_column(String(120))
+    pincode: Mapped[str] = mapped_column(String(20))
+
+
+class WishlistItem(Base, TimestampMixin):
+    __tablename__ = "wishlist_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
+    __table_args__ = (UniqueConstraint("user_id", "product_id"),)
 
 
 class Category(Base, TimestampMixin):
@@ -168,6 +217,7 @@ class Order(Base, TimestampMixin):
     __tablename__ = "orders"
     id: Mapped[int] = mapped_column(primary_key=True)
     order_number: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     shipping_address_id: Mapped[int] = mapped_column(ForeignKey("shipping_addresses.id"))
     status: Mapped[str] = mapped_column(String(40), default="processing")
     payment_status: Mapped[str] = mapped_column(String(40), default="pending")
@@ -244,3 +294,9 @@ class JournalPost(Base, TimestampMixin):
     body: Mapped[str] = mapped_column(Text)
     hero_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class CrewSignup(Base, TimestampMixin):
+    __tablename__ = "crew_signups"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    phone: Mapped[str] = mapped_column(String(30), unique=True, index=True)

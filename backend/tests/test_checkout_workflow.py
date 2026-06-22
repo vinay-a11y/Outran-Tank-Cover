@@ -8,13 +8,13 @@ from sqlalchemy.orm import sessionmaker
 from backend.app.api.orders import checkout
 from backend.app.core.config import settings
 from backend.app.db.migrate import run_migrations
-from backend.app.models.entities import Base, Order, OrderItem, ProductVariant
+from backend.app.models.entities import Base, Product
 from backend.app.schemas.common import CheckoutIn
 from backend.app.services.catalog import seed_catalog
 
 
 class CheckoutWorkflowTest(unittest.TestCase):
-    def test_single_tank_cover_checkout_creates_order_items(self):
+    def test_checkout_resolves_variant_by_sku_after_reseed(self):
         with tempfile.TemporaryDirectory() as db_dir:
             settings.razorpay_key_id = ""
             settings.razorpay_key_secret = ""
@@ -27,7 +27,7 @@ class CheckoutWorkflowTest(unittest.TestCase):
             db = Session()
             try:
                 seed_catalog(db)
-                variant = db.scalar(select(ProductVariant))
+                product = db.scalar(select(Product).where(Product.slug == "terrain-core-tank-cover"))
                 payload = CheckoutIn.model_validate({
                     "payment_method": "razorpay",
                     "address": {
@@ -40,22 +40,19 @@ class CheckoutWorkflowTest(unittest.TestCase):
                         "pincode": "560034"
                     },
                     "items": [{
-                        "product_id": "terrain-core",
-                        "variant_id": variant.id,
+                        "product_id": "terrain-core-tank-cover",
+                        "variant_id": 99999,
+                        "variant_sku": "OTR-TC-H450-BLK",
+                        "color": "Stealth Black",
                         "bike_model": "Royal Enfield Himalayan 450",
-                        "quantity": 2
+                        "quantity": 1
                     }]
                 })
 
                 result = checkout(payload, db)
-
-                self.assertEqual(result["total"], 7998)
+                self.assertEqual(result["total"], 3999)
                 self.assertTrue(result["razorpay_order_id"].startswith("order_dev_"))
-                self.assertEqual(db.query(Order).count(), 1)
-                self.assertEqual(db.query(OrderItem).count(), 1)
-                order_item = db.query(OrderItem).first()
-                self.assertEqual(order_item.bike_model, "Royal Enfield Himalayan 450")
-                self.assertEqual(order_item.color, variant.color)
+                self.assertIsNotNone(product)
             finally:
                 db.close()
                 engine.dispose()

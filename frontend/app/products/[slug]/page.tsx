@@ -16,7 +16,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
   return (
     <main className="pt-20">
-      <section className="container-x grid gap-8 pb-10 lg:grid-cols-[1.18fr_.82fr]">
+      <section className="container-x pb-10">
         <ProductPageClient product={product} />
       </section>
 

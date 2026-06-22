@@ -5,7 +5,11 @@ import { Check, Mail, PackageCheck, Truck, ShieldCheck, ArrowRight } from "lucid
 import { getOrder } from "@/lib/api";
 import { formatINR } from "@/lib/utils";
 
-export default async function OrderSuccessPage({ searchParams }: { searchParams: Promise<{ order?: string }> }) {
+type SearchParams = Promise<{
+  order?: string;
+}>;
+
+export default async function OrderSuccessPage({ searchParams }: { searchParams: SearchParams }) {
   const { order: orderNumber } = await searchParams;
   const order = orderNumber ? await getOrder(orderNumber) : null;
   const timeline: Array<[string, ElementType]> = [
@@ -34,7 +38,7 @@ export default async function OrderSuccessPage({ searchParams }: { searchParams:
             <Link className="inline-flex items-center gap-2 bg-accent-primary px-6 py-4 text-sm font-black uppercase text-bg-primary" href="/products">
               Continue shopping <ArrowRight size={16} />
             </Link>
-            <Link className="inline-flex items-center gap-2 border border-accent-primary/70 px-6 py-4 text-sm font-black uppercase" href="/contact">
+            <Link className="inline-flex items-center gap-2 border border-accent-primary/70 px-6 py-4 text-sm font-black uppercase" href="#order-status">
               Track order
             </Link>
           </div>
@@ -50,7 +54,7 @@ export default async function OrderSuccessPage({ searchParams }: { searchParams:
             </p>
           </div>
 
-          <div className="cinematic-panel p-5">
+          <div id="order-status" className="cinematic-panel p-5">
             <h3 className="font-display text-3xl uppercase">Order status</h3>
             <div className="mt-8 grid gap-5 md:grid-cols-4">
               {timeline.map(([label, Icon], index) => (

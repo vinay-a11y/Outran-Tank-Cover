@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowRight, Minus, Plus } from "lucide-react";
 import type { StoreProduct } from "@/lib/api";
 import { buildCartItemFromProduct, useCart } from "@/store/cart";
@@ -12,22 +13,24 @@ type Props = {
 };
 
 export function ProductDetailClient({ product, selectedVariantId, onVariantChange }: Props) {
+  const router = useRouter();
   const addItem = useCart((state) => state.addItem);
   const defaultVariant = product.variants.find((variant) => variant.is_default) ?? product.variants[0];
-  const [selectedBike, setSelectedBike] = useState(product.supported_bike_models[0] ?? "");
+  const [selectedBike, setSelectedBike] = useState(product.supported_bike_models[0] ?? "Standard");
   const [quantity, setQuantity] = useState(1);
 
   const selectedVariant = product.variants.find((variant) => variant.id === selectedVariantId) ?? defaultVariant;
   const inStock = (selectedVariant?.stock ?? 0) > 0;
   const maxQty = Math.max(selectedVariant?.stock ?? 1, 1);
+  const bikeModel = selectedBike || product.supported_bike_models[0] || "Standard";
 
   function handleAdd(target: "/cart" | "/checkout") {
     if (!selectedVariant || !inStock) return;
     addItem({
-      ...buildCartItemFromProduct(product, selectedVariant, selectedBike),
-      qty: Math.min(quantity, maxQty),
+      ...buildCartItemFromProduct(product, selectedVariant, bikeModel),
+      qty: Math.min(Math.max(quantity, 1), maxQty),
     });
-    window.location.href = target;
+    router.push(target);
   }
 
   return (

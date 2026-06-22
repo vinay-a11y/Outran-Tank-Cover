@@ -1,5 +1,5 @@
 import type { CartItem } from "@/store/cart";
-import { products as fallbackProducts, tankCoverProduct } from "@/lib/data";
+import { apiClient } from "@/lib/auth-api";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api";
 const FETCH_TIMEOUT_MS = 5000;
@@ -141,6 +141,7 @@ export type CheckoutResponse = {
 };
 
 export type OrderData = {
+  id?: number;
   order_number: string;
   status: string;
   payment_status: string;
@@ -160,6 +161,10 @@ export type OrderData = {
     variant_sku?: string | null;
     image?: string | null;
   }>;
+  shipping_address?: CheckoutAddress | null;
+  razorpay_payment_id?: string | null;
+  timeline?: Array<{ label: string; complete: boolean }>;
+  invoice?: { number: string; total: number };
   created_at?: string | null;
 };
 
@@ -231,75 +236,44 @@ function buildQuery(params?: ProductQuery): string {
 }
 
 export async function getProducts(params?: ProductQuery): Promise<StoreProduct[]> {
-  try {
-    const response = await fetchWithTimeout(`${API_BASE_URL}/products${buildQuery(params)}`, { next: { revalidate: 60 } });
-    if (!response.ok) throw new Error("Products request failed");
-    const products = (await response.json()) as StoreProduct[];
-    return products.map(normalizeProduct);
-  } catch {
-    return fallbackProducts.map((product) => normalizeProduct(product as unknown as StoreProduct));
-  }
+  const response = await fetchWithTimeout(`${API_BASE_URL}/products${buildQuery(params)}`, { next: { revalidate: 60 } });
+  if (!response.ok) throw new Error("Products request failed");
+  const products = (await response.json()) as StoreProduct[];
+  return products.map(normalizeProduct);
 }
 
 export async function getFeaturedProducts(): Promise<StoreProduct[]> {
-  try {
-    const response = await fetchWithTimeout(`${API_BASE_URL}/products/featured`, { next: { revalidate: 60 } });
-    if (!response.ok) throw new Error("Featured products request failed");
-    return ((await response.json()) as StoreProduct[]).map(normalizeProduct);
-  } catch {
-    return fallbackProducts.map((product) => normalizeProduct(product as unknown as StoreProduct));
-  }
+  const response = await fetchWithTimeout(`${API_BASE_URL}/products/featured`, { next: { revalidate: 60 } });
+  if (!response.ok) throw new Error("Featured products request failed");
+  return ((await response.json()) as StoreProduct[]).map(normalizeProduct);
 }
 
 export async function getProduct(slug: string): Promise<StoreProduct> {
-  try {
-    const response = await fetchWithTimeout(`${API_BASE_URL}/products/${slug}`, { next: { revalidate: 60 } });
-    if (!response.ok) throw new Error("Product request failed");
-    return normalizeProduct((await response.json()) as StoreProduct);
-  } catch {
-    return normalizeProduct(tankCoverProduct as unknown as StoreProduct);
-  }
+  const response = await fetchWithTimeout(`${API_BASE_URL}/products/${slug}`, { next: { revalidate: 60 } });
+  if (!response.ok) throw new Error("Product request failed");
+  return normalizeProduct((await response.json()) as StoreProduct);
 }
 
 export async function getProductFilters(): Promise<ProductFilters> {
-  try {
-    const response = await fetchWithTimeout(`${API_BASE_URL}/products/filters`, { next: { revalidate: 300 } });
-    if (!response.ok) throw new Error("Filters request failed");
-    return response.json();
-  } catch {
-    return {
-      categories: [{ name: "Tank Covers", slug: "tank-covers" }],
-      bike_models: ["Royal Enfield Himalayan 450"],
-      colors: ["Stealth Black", "Black / Orange Stitch", "Trail Green"],
-      stock_statuses: ["in_stock", "low_stock", "out_of_stock"],
-      sort_options: [
-        { value: "featured", label: "Featured" },
-        { value: "newest", label: "Newest" },
-        { value: "price_asc", label: "Price: Low to High" },
-        { value: "price_desc", label: "Price: High to Low" },
-      ],
-    };
-  }
+  const response = await fetchWithTimeout(`${API_BASE_URL}/products/filters`, { next: { revalidate: 300 } });
+  if (!response.ok) throw new Error("Filters request failed");
+  return response.json();
 }
 
-export async function getHomepage(): Promise<HomepageData | null> {
-  try {
-    const response = await fetchWithTimeout(`${API_BASE_URL}/homepage`, { next: { revalidate: 60 } });
-    if (!response.ok) throw new Error("Homepage request failed");
-    const data = (await response.json()) as HomepageData;
-    return {
-      ...data,
-      featured_products: data.featured_products.map(normalizeProduct),
-      latest_products: data.latest_products.map(normalizeProduct),
-    };
-  } catch {
-    return null;
-  }
+export async function getHomepage(): Promise<HomepageData> {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/homepage`, { next: { revalidate: 60 } });
+  if (!response.ok) throw new Error("Homepage request failed");
+  const data = (await response.json()) as HomepageData;
+  return {
+    ...data,
+    featured_products: data.featured_products.map(normalizeProduct),
+    latest_products: data.latest_products.map(normalizeProduct),
+  };
 }
 
 export async function getOrder(orderNumber: string): Promise<OrderData | null> {
   try {
-    const response = await fetchWithTimeout(`${API_BASE_URL}/orders/${orderNumber}`, { cache: "no-store" });
+    const response = await fetchWithTimeout(`${API_BASE_URL}/orders/${orderNumber}`, { cache: "no-store", credentials: "include" });
     if (!response.ok) return null;
     return response.json();
   } catch {
@@ -311,12 +285,15 @@ export async function createCheckout(address: CheckoutAddress, items: CartItem[]
   const response = await fetch(`${API_BASE_URL}/orders/checkout`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({
       address,
       payment_method: "razorpay",
       items: items.map((item) => ({
         product_id: item.id,
-        variant_id: item.variant_id,
+        variant_id: item.variant_id > 0 ? item.variant_id : undefined,
+        variant_sku: item.variant_sku,
+        color: item.color,
         bike_model: item.bike_model,
         quantity: item.qty,
       })),
@@ -335,6 +312,7 @@ export async function verifyPayment(payload: RazorpayVerifyPayload): Promise<{ s
   const response = await fetch(`${API_BASE_URL}/orders/verify-payment`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(payload),
   });
 
@@ -344,6 +322,11 @@ export async function verifyPayment(payload: RazorpayVerifyPayload): Promise<{ s
   }
 
   return response.json();
+}
+
+export async function getOrderDetails(orderId: string): Promise<OrderData> {
+  const response = await apiClient.get<OrderData>(`/orders/id/${orderId}`);
+  return response.data;
 }
 
 export function getVariantGallery(variant?: ProductVariant): string[] {

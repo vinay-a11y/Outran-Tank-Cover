@@ -1,11 +1,16 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from backend.app.db.session import get_db
-from backend.app.models.entities import Banner, BikeModel, Category, Coupon, Product, ProductVariant, Review, Setting
+from backend.app.models.entities import Banner, BikeModel, Category, Coupon, CrewSignup, Product, ProductVariant, Review, Setting
 from backend.app.services.catalog import get_category_map, product_to_out
 
 router = APIRouter(tags=["content"])
+
+
+class CrewSignupIn(BaseModel):
+    phone: str = Field(min_length=6, max_length=30)
 
 
 @router.get("/categories")
@@ -48,6 +53,19 @@ def coupon(code: str, db: Session = Depends(get_db)):
 @router.get("/journal")
 def journal_posts():
     return {"items": [{"title": "Built for the ride beyond roads", "slug": "built-for-the-ride-beyond-roads"}]}
+
+
+@router.post("/crew-signups")
+def crew_signup(payload: CrewSignupIn, db: Session = Depends(get_db)):
+    phone = payload.phone.strip()
+    existing = db.scalar(select(CrewSignup).where(CrewSignup.phone == phone))
+    if existing:
+        return {"ok": True, "id": existing.id}
+    signup = CrewSignup(phone=phone)
+    db.add(signup)
+    db.commit()
+    db.refresh(signup)
+    return {"ok": True, "id": signup.id}
 
 
 def _product_load_options():

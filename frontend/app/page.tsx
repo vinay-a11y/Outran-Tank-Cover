@@ -1,82 +1,83 @@
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, ShieldCheck, Star } from "lucide-react";
+import { Bike, Play, ShieldCheck, ShoppingBag, Star } from "lucide-react";
 import { CinematicHero } from "@/components/cinematic-hero";
 import { ProductCard } from "@/components/product-card";
 import { SectionHeading } from "@/components/section-heading";
 import { TrustBand } from "@/components/trust-band";
-import { getHomepage, getProducts } from "@/lib/api";
-import { formatINR } from "@/lib/utils";
+import { CrewSignupForm } from "@/components/crew-signup-form";
+import { getHomepage } from "@/lib/api";
 
 export default async function HomePage() {
-  const [homepage, products] = await Promise.all([getHomepage(), getProducts()]);
-  const hero = homepage?.hero;
-  const featured = homepage?.featured_products?.length ? homepage.featured_products : products.filter((product) => product.featured_product);
-  const latest = homepage?.latest_products?.length ? homepage.latest_products : products;
-  const heroProduct = featured[0] ?? latest[0];
+  let homepage;
+  try {
+    homepage = await getHomepage();
+  } catch {
+    return (
+      <main className="container-x flex min-h-[60vh] flex-col justify-center pt-24">
+        <p className="text-sm font-black uppercase tracking-[.18em] text-accent-primary">OUTRAN Storefront</p>
+        <h1 className="tactical-title mt-3 text-5xl uppercase">Backend unavailable</h1>
+        <p className="mt-3 max-w-xl text-text-secondary">Start the API server to load products, compatibility, and homepage content.</p>
+      </main>
+    );
+  }
+  const { hero, featured_products: featured, compatibility_highlights: compatibility, offers, testimonials } = homepage;
+  const bikeImages: Record<string, string> = {
+    "Royal Enfield Himalayan 450": "/assets/feature-quick-lock.png",
+    "Royal Enfield Himalayan 411": "/assets/feature-waterproof.png",
+    "Royal Enfield Scram 411": "/assets/feature-terrain-fit.png",
+  };
 
   return (
     <main>
       <CinematicHero
-        eyebrow={hero?.eyebrow ?? "Terrain Core"}
-        title={hero?.title?.replace(/\.$/, "") ?? "Built for the ride"}
-        highlight="beyond roads."
-        copy={hero?.subtitle ?? "Precision fit tank cover systems tested in the wild."}
-        image={hero?.image ?? "/assets/Hero.png"}
+        eyebrow="Premium accessories"
+        title="Built for the"
+        highlight="ride beyond"
+        copy="High quality tank covers and accessories for Royal Enfield riders."
+        image="/assets/Hero.png"
+        home
+        footer={<TrustBand variant="hero" />}
       >
-        <Link href={hero?.cta_href ?? "/products"} className="inline-flex items-center gap-3 bg-accent-primary px-5 py-3 text-sm font-black uppercase text-bg-primary">
-          {hero?.cta_label ?? "Shop tank covers"} <ArrowRight size={18} />
+        <Link href={hero.cta_href} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-md bg-accent-primary px-5 py-3 text-sm font-black uppercase tracking-[.04em] text-bg-primary shadow-glow transition hover:-translate-y-0.5 hover:bg-accent-hover sm:w-auto">
+          <ShoppingBag size={16} /> Shop now
         </Link>
-        <Link href="/products" className="inline-flex items-center gap-3 border border-accent-primary/60 px-5 py-3 text-sm font-black uppercase text-text-primary">
-          Browse catalog
+        <Link href="/products" className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-md border border-white/60 bg-black/18 px-5 py-3 text-sm font-black uppercase tracking-[.04em] text-text-primary backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-accent-primary hover:text-accent-primary sm:w-auto">
+          <Bike size={16} /> Choose your bike
         </Link>
       </CinematicHero>
 
-      <TrustBand />
-
-      {heroProduct && (
-        <section className="py-6">
-          <div className="container-x grid gap-4 lg:grid-cols-[1fr_1fr]">
-            <div className="relative min-h-[320px] overflow-hidden border border-border-primary">
-              <Image src={heroProduct.image} alt={heroProduct.name} fill className="object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/20 to-black/60" />
-              <div className="absolute bottom-0 left-0 max-w-xl p-5">
-                <p className="text-xs font-black uppercase tracking-[.18em] text-accent-primary">{heroProduct.category}</p>
-                <h2 className="tactical-title mt-2 text-4xl uppercase md:text-5xl">{heroProduct.name}</h2>
-                <p className="font-display text-2xl uppercase text-text-primary/80">{heroProduct.subtitle}</p>
-                <p className="mt-2 text-2xl font-black text-accent-primary">{formatINR(heroProduct.discounted_price ?? heroProduct.price)}</p>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <Link href={`/products/${heroProduct.slug}`} className="bg-accent-primary px-5 py-2.5 text-sm font-black uppercase text-bg-primary">
-                    View details
-                  </Link>
+      <section className="scroll-reveal border-y border-border-primary py-8 md:py-10">
+        <div className="container-x">
+          <SectionHeading
+            eyebrow="Compatibility"
+            title={compatibility.title}
+            copy={compatibility.copy}
+          />
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            {compatibility.bike_models.map((bike) => (
+              <Link
+                key={bike.slug}
+                href={`/products?bike_model=${encodeURIComponent(bike.name)}`}
+                className="group relative min-h-56 overflow-hidden rounded-md border border-border-primary transition hover:border-accent-primary"
+              >
+                <Image src={bikeImages[bike.name] ?? "/assets/Hero.png"} alt={bike.name} fill className="object-cover transition duration-700 group-hover:scale-105" />
+                <span className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/35 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-4">
+                  <p className="font-display text-3xl uppercase leading-none">{bike.name.replace("Royal Enfield ", "")}</p>
+                  <p className="mt-2 text-sm text-text-secondary">Shop tank covers built for this model</p>
+                  <p className="mt-3 text-xs font-black uppercase text-accent-primary group-hover:underline">Browse compatible gear</p>
                 </div>
-              </div>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {(homepage?.bike_categories ?? []).slice(0, 3).map((category) => (
-                <Link key={category.slug} href={`/products?category=${category.slug}`} className="relative min-h-[152px] overflow-hidden border border-border-primary bg-black/30">
-                  {category.image_url && <Image src={category.image_url} alt={category.name} fill className="object-cover opacity-70" />}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/15" />
-                  <div className="absolute inset-x-0 bottom-0 p-4">
-                    <p className="max-w-44 text-sm font-black uppercase tracking-[.12em]">{category.name}</p>
-                    <p className="mt-2 max-w-56 text-xs leading-5 text-text-secondary">{category.description}</p>
-                  </div>
-                </Link>
-              ))}
-              <div className="border border-border-primary bg-surface-card/55 p-4">
-                <p className="text-xs font-black uppercase tracking-[.18em] text-accent-primary">{homepage?.compatibility_highlights.title ?? "Fits your ride"}</p>
-                <p className="tactical-title mt-2 text-4xl uppercase">Compatibility</p>
-                <p className="mt-2 text-sm leading-6 text-text-secondary">{homepage?.compatibility_highlights.copy}</p>
-              </div>
-            </div>
+              </Link>
+            ))}
           </div>
-        </section>
-      )}
+        </div>
+      </section>
 
       {featured.length > 0 && (
-        <section className="py-8">
-          <SectionHeading eyebrow="Featured" title="Trail-proven tank covers" />
-          <div className="container-x grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="scroll-reveal py-8 md:py-12">
+          <SectionHeading eyebrow="Featured" title="Trail-proven tank covers" copy="All models loaded live from the OUTRAN catalog." />
+          <div className="container-x grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {featured.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
@@ -84,24 +85,34 @@ export default async function HomePage() {
         </section>
       )}
 
-      {latest.length > 0 && (
-        <section className="border-y border-border-primary py-8">
-          <SectionHeading eyebrow="Latest" title="New arrivals" copy="Fresh drops and restocked colorways from the OUTRAN workshop." />
-          <div className="container-x grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {latest.map((product) => (
-              <ProductCard key={`latest-${product.id}`} product={product} />
-            ))}
+      <section className="container-x scroll-reveal grid gap-5 py-8 md:grid-cols-[1.1fr_.9fr] md:py-12">
+        <div className="relative min-h-72 overflow-hidden rounded-md border border-border-primary bg-black/45">
+          <Image src="/assets/story-rain-tested.png" alt="OUTRAN tank cover video preview" fill className="object-cover opacity-70" />
+          <div className="absolute inset-0 grid place-items-center bg-black/35">
+            <div className="grid h-16 w-16 place-items-center rounded-full bg-accent-primary text-bg-primary shadow-glow">
+              <Play size={24} fill="currentColor" />
+            </div>
           </div>
-        </section>
-      )}
+        </div>
+        <div className="rounded-md border border-border-primary bg-black/24 p-5 md:p-7">
+          <p className="text-xs font-black uppercase tracking-[.16em] text-accent-primary">Video ready</p>
+          <h2 className="tactical-title mt-2 text-3xl uppercase md:text-5xl">Add your tank cover video here</h2>
+          <p className="mt-3 text-sm leading-7 text-text-secondary">Use this space for install clips, rain tests, fit demos, and real bike walkarounds.</p>
+          <div className="mt-5 flex flex-wrap gap-3 text-xs font-black uppercase text-accent-primary">
+            <span className="rounded border border-border-primary px-3 py-2">Install demo</span>
+            <span className="rounded border border-border-primary px-3 py-2">Waterproof test</span>
+            <span className="rounded border border-border-primary px-3 py-2">Ride proof</span>
+          </div>
+        </div>
+      </section>
 
-      {(homepage?.offers ?? []).length > 0 && (
-        <section className="container-x py-8">
-          <div className="grid gap-4 md:grid-cols-3">
-            {homepage!.offers.map((offer) => (
-              <Link key={offer.code} href={offer.cta_href} className="cinematic-panel p-5 transition hover:border-accent-primary/60">
+      {offers.length > 0 && (
+        <section className="container-x scroll-reveal border-y border-border-primary py-8 md:py-10">
+          <div className="grid gap-px overflow-hidden rounded-md border border-border-primary bg-border-primary md:grid-cols-3">
+            {offers.map((offer) => (
+              <Link key={offer.code} href={offer.cta_href} className="bg-bg-primary p-5 transition hover:bg-surface-card">
                 <p className="text-xs font-black uppercase tracking-[.18em] text-accent-primary">{offer.title}</p>
-                <p className="mt-3 font-display text-3xl uppercase">{offer.code}</p>
+                <p className="mt-3 font-display text-2xl uppercase">{offer.code}</p>
                 <p className="mt-2 text-sm leading-6 text-text-secondary">{offer.copy}</p>
               </Link>
             ))}
@@ -109,11 +120,11 @@ export default async function HomePage() {
         </section>
       )}
 
-      {(homepage?.testimonials ?? []).length > 0 && (
-        <section className="py-8">
+      {testimonials.length > 0 && (
+        <section className="scroll-reveal py-8 md:py-12">
           <SectionHeading eyebrow="Rider proof" title="Trusted on real rides" />
-          <div className="container-x grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {homepage!.testimonials.map((testimonial) => (
+          <div className="container-x grid gap-4 lg:grid-cols-3">
+            {testimonials.map((testimonial) => (
               <article key={testimonial.name + testimonial.body.slice(0, 12)} className="cinematic-panel p-5">
                 <div className="flex gap-1 text-accent-primary">
                   {Array.from({ length: testimonial.rating }).map((_, index) => (
@@ -128,10 +139,11 @@ export default async function HomePage() {
         </section>
       )}
 
-      <section className="container-x mb-8 border border-border-primary bg-radial-ember p-5 md:p-8">
-        <ShieldCheck className="text-accent-primary" size={34} />
-        <h2 className="tactical-title mt-4 text-5xl uppercase">Not just gear. It&apos;s a mindset.</h2>
-        <p className="mt-3 max-w-2xl leading-7 text-text-secondary">Join the OUTRAN crew for founder drops, field stories, and early access to rugged motorcycle systems.</p>
+      <section className="container-x scroll-reveal mb-10 rounded-md border border-border-primary bg-radial-ember p-5 sm:p-6 md:p-8">
+        <ShieldCheck className="text-accent-primary" size={30} />
+        <h2 className="tactical-title mt-4 text-3xl uppercase sm:text-4xl">Join the OUTRAN crew</h2>
+        <p className="mt-3 max-w-2xl leading-7 text-text-secondary">Drop your number for ride updates, new product videos, and early access to rugged motorcycle systems.</p>
+        <CrewSignupForm />
       </section>
     </main>
   );

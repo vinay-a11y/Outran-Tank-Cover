@@ -4,9 +4,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from backend.app.core.config import settings
 from backend.app.db.session import get_db
-from backend.app.models.entities import Category, Product, ProductImage, ProductVariant, VariantImage
+from backend.app.models.entities import Category, Product, ProductImage, ProductVariant
 from backend.app.schemas.admin import ProductCreateIn, ProductUpdateIn
-from backend.app.services.catalog import get_category_map, product_to_out, seed_catalog
+from backend.app.services.catalog import get_category_map, product_to_out, save_product_variants, seed_catalog
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -55,34 +55,7 @@ def _save_product_images(db: Session, product_id: int, images: list) -> None:
 
 
 def _save_variants(db: Session, product_id: int, variants: list) -> None:
-    variant_ids = [variant.id for variant in db.query(ProductVariant).filter(ProductVariant.product_id == product_id).all()]
-    if variant_ids:
-        db.query(VariantImage).filter(VariantImage.variant_id.in_(variant_ids)).delete()
-    db.query(ProductVariant).filter(ProductVariant.product_id == product_id).delete()
-    for variant_in in variants:
-        variant = ProductVariant(
-            product_id=product_id,
-            sku=variant_in.sku,
-            color=variant_in.color,
-            color_hex=variant_in.color_hex,
-            material=variant_in.material,
-            size=variant_in.size,
-            price=variant_in.price,
-            stock=variant_in.stock,
-            is_default=variant_in.is_default,
-        )
-        db.add(variant)
-        db.flush()
-        for order, image in enumerate(variant_in.images):
-            db.add(
-                VariantImage(
-                    variant_id=variant.id,
-                    url=image.url,
-                    alt=image.alt,
-                    sort_order=image.sort_order or order,
-                    is_thumbnail=image.is_thumbnail,
-                )
-            )
+    save_product_variants(db, product_id, variants)
 
 
 @router.post("/products")

@@ -5,8 +5,7 @@ export const asset = (name: string) => `/assets/${name}`;
 export const navItems = [
   { label: "Home", href: "/" },
   { label: "Shop", href: "/products" },
-  { label: "Build", href: "/products/terrain-core-tank-cover" },
-  { label: "Journal", href: "/journal" },
+  { label: "Orders", href: "/orders" },
   { label: "About", href: "/about" },
   { label: "Contact", href: "/contact" }
 ];

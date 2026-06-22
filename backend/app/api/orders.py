@@ -1,12 +1,13 @@
 import secrets
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
+from backend.app.core.auth import get_current_user, get_current_user_optional
 from backend.app.core.config import settings
 from backend.app.db.session import get_db
-from backend.app.models.entities import Coupon, Order, OrderItem, Product, ProductImage, ProductVariant, ShippingAddress, VariantImage
+from backend.app.models.entities import Coupon, Order, OrderItem, Product, ProductImage, ProductVariant, ShippingAddress, User, UserAddress
 from backend.app.schemas.common import CheckoutIn, OrderOut, RazorpayVerifyIn
-from backend.app.services.catalog import resolve_product_identifier
+from backend.app.services.catalog import resolve_checkout_variant, resolve_product_identifier
 from backend.app.services.payments import PaymentOrderError, create_payment_order, verify_payment_signature, verify_webhook
 from backend.app.services.pricing import calculate_discounted_price, calculate_line_total
 
@@ -31,7 +32,7 @@ def _product_image(db: Session, product: Product) -> str | None:
 
 
 @router.post("/checkout")
-def checkout(payload: CheckoutIn, db: Session = Depends(get_db)):
+def checkout(payload: CheckoutIn, db: Session = Depends(get_db), current_user: User | None = Depends(get_current_user)):
     subtotal = 0.0
     discount_total = 0.0
     order_lines: list[tuple[Product, ProductVariant | None, int, float, float, str | None, str | None]] = []
@@ -49,19 +50,19 @@ def checkout(payload: CheckoutIn, db: Session = Depends(get_db)):
                 detail=f"Product not found: {item.product_id}. Refresh product data and try again.",
             )
 
-        variant = None
+        variant = resolve_checkout_variant(
+            product,
+            variant_id=item.variant_id,
+            variant_sku=item.variant_sku,
+            color=item.color,
+        )
         unit_price = float(product.price)
-        if item.variant_id:
-            variant = db.get(ProductVariant, item.variant_id)
-            if not variant or variant.product_id != product.id:
-                raise HTTPException(status_code=400, detail="Invalid product variant")
+        if variant:
             unit_price = float(variant.price)
             if product.variant_stock_tracking and variant.stock < item.quantity:
                 raise HTTPException(status_code=400, detail=f"Insufficient stock for {variant.color}")
-        elif product.variant_stock_tracking:
-            default_variant = next((v for v in product.variants if v.is_default), product.variants[0] if product.variants else None)
-            if default_variant and default_variant.stock < item.quantity:
-                raise HTTPException(status_code=400, detail="Insufficient stock for selected product")
+        elif product.variant_stock_tracking and product.variants:
+            raise HTTPException(status_code=400, detail="Please select a valid color variant and try again.")
 
         discounted_unit = calculate_discounted_price(unit_price, product.discount_type, float(product.discount_value or 0))
         line_discount = (unit_price - discounted_unit) * item.quantity
@@ -98,8 +99,29 @@ def checkout(payload: CheckoutIn, db: Session = Depends(get_db)):
     address = ShippingAddress(**payload.address.model_dump())
     db.add(address)
     db.flush()
+    if isinstance(current_user, User):
+        existing_address = db.scalar(
+            select(UserAddress).where(
+                UserAddress.user_id == current_user.id,
+                UserAddress.address == payload.address.address,
+                UserAddress.pincode == payload.address.pincode,
+            )
+        )
+        if not existing_address:
+            saved_address = UserAddress(user_id=current_user.id, **payload.address.model_dump())
+            db.add(saved_address)
+            db.flush()
+            older_addresses = db.scalars(
+                select(UserAddress.id)
+                .where(UserAddress.user_id == current_user.id, UserAddress.id != saved_address.id)
+                .order_by(UserAddress.created_at.desc())
+                .offset(1)
+            ).all()
+            if older_addresses:
+                db.execute(delete(UserAddress).where(UserAddress.id.in_(older_addresses)))
     order = Order(
         order_number=f"OTR{secrets.randbelow(89999) + 10000}",
+        user_id=current_user.id if isinstance(current_user, User) else None,
         shipping_address_id=address.id,
         subtotal=round(subtotal, 2),
         discount=round(discount_total, 2),
@@ -149,8 +171,56 @@ def checkout(payload: CheckoutIn, db: Session = Depends(get_db)):
     }
 
 
+def _order_card(db: Session, order: Order) -> dict:
+    first_item = order.items[0] if order.items else None
+    product = db.get(Product, first_item.product_id) if first_item else None
+    variant = db.get(ProductVariant, first_item.variant_id) if first_item and first_item.variant_id else None
+    if variant:
+        db.refresh(variant, attribute_names=["images"])
+    image = _variant_image(variant) if variant else None
+    if not image and product:
+        image = _product_image(db, product)
+    return {
+        "id": order.id,
+        "order_number": order.order_number,
+        "product_image": image,
+        "product_name": first_item.name if first_item else "Order",
+        "variant": first_item.color if first_item else None,
+        "quantity": sum(item.quantity for item in order.items),
+        "amount": float(order.total),
+        "payment_status": order.payment_status,
+        "order_status": order.status,
+        "created_at": order.created_at.isoformat() if order.created_at else None,
+    }
+
+
+@router.get("")
+def list_orders(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    orders = db.scalars(
+        select(Order)
+        .options(selectinload(Order.items))
+        .where(Order.user_id == current_user.id)
+        .order_by(Order.created_at.desc())
+    ).all()
+    return {"items": [_order_card(db, order) for order in orders]}
+
+
+@router.get("/id/{order_id}")
+def get_order_by_id(order_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    order = db.scalar(
+        select(Order)
+        .options(selectinload(Order.items), selectinload(Order.shipping_address))
+        .where(Order.id == order_id, Order.user_id == current_user.id)
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    base = _order_detail_payload(db, order)
+    base["id"] = order.id
+    return base
+
+
 @router.get("/{order_number}", response_model=OrderOut)
-def get_order(order_number: str, db: Session = Depends(get_db)):
+def get_order(order_number: str, db: Session = Depends(get_db), current_user: User | None = Depends(get_current_user_optional)):
     order = db.scalar(
         select(Order)
         .options(
@@ -162,6 +232,13 @@ def get_order(order_number: str, db: Session = Depends(get_db)):
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
+    if current_user and order.user_id and order.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    return _order_detail_payload(db, order)
+
+
+def _order_detail_payload(db: Session, order: Order) -> dict:
     items_out = []
     for item in order.items:
         product = db.get(Product, item.product_id)
@@ -195,16 +272,33 @@ def get_order(order_number: str, db: Session = Depends(get_db)):
         "tax": float(order.tax),
         "total": float(order.total),
         "items": items_out,
+        "shipping_address": {
+            "full_name": order.shipping_address.full_name,
+            "phone": order.shipping_address.phone,
+            "email": order.shipping_address.email,
+            "address": order.shipping_address.address,
+            "city": order.shipping_address.city,
+            "state": order.shipping_address.state,
+            "pincode": order.shipping_address.pincode,
+        } if order.shipping_address else None,
+        "razorpay_payment_id": order.razorpay_payment_id,
+        "timeline": [
+            {"label": "Confirmed", "complete": True},
+            {"label": "Processing", "complete": order.status in {"processing", "shipped", "delivered"}},
+            {"label": "Shipped", "complete": order.status in {"shipped", "delivered"}},
+            {"label": "Delivered", "complete": order.status == "delivered"},
+        ],
+        "invoice": {"number": f"INV-{order.order_number}", "total": float(order.total)},
         "created_at": order.created_at.isoformat() if order.created_at else None,
     }
 
 
 @router.post("/verify-payment")
-def verify_payment(payload: RazorpayVerifyIn, db: Session = Depends(get_db)):
+def verify_payment(payload: RazorpayVerifyIn, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     if not verify_payment_signature(payload.razorpay_order_id, payload.razorpay_payment_id, payload.razorpay_signature):
         raise HTTPException(status_code=400, detail="Invalid payment signature")
     order = db.get(Order, payload.order_id)
-    if not order:
+    if not order or order.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Order not found")
     order.payment_status = "paid"
     order.razorpay_payment_id = payload.razorpay_payment_id

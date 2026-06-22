@@ -4,12 +4,13 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
 import type { ElementType, ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CreditCard, LockKeyhole, Mail, MapPin, Phone, User, ArrowRight } from "lucide-react";
-import { checkoutSteps } from "@/lib/data";
 import { createCheckout, verifyPayment, type CheckoutAddress } from "@/lib/api";
+import { getAddresses } from "@/lib/auth-api";
+import { useAuth } from "@/components/auth-provider";
 import { formatINR } from "@/lib/utils";
-import { useCart } from "@/store/cart";
+import { syncCartWithBackend, useCart } from "@/store/cart";
 
 declare global {
   interface Window {
@@ -18,13 +19,13 @@ declare global {
 }
 
 const initialAddress: CheckoutAddress = {
-  full_name: "Rohit Sharma",
-  phone: "+91 98765 43210",
-  email: "rohit.sharma@gmail.com",
-  address: "123, Mountain View Road, Koramangala",
-  city: "Bangalore",
-  state: "Karnataka",
-  pincode: "560034"
+  full_name: "",
+  phone: "",
+  email: "",
+  address: "",
+  city: "",
+  state: "",
+  pincode: "",
 };
 
 function loadRazorpayScript(): Promise<boolean> {
@@ -50,22 +51,81 @@ function loadRazorpayScript(): Promise<boolean> {
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, clear, subtotal, discountTotal, shipping, total } = useCart();
+  const { user, openLogin } = useAuth();
+  const { items, clear, setItems, subtotal, discountTotal, shipping, total } = useCart();
   const [address, setAddress] = useState(initialAddress);
   const [status, setStatus] = useState("");
   const [razorpayReady, setRazorpayReady] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    async function prepareCheckout() {
+      if (items.length === 0) {
+        setReady(true);
+        router.replace("/cart");
+        return;
+      }
+      setStatus("Syncing cart with latest product data...");
+      const syncedItems = await syncCartWithBackend(items);
+      setItems(syncedItems);
+      if (syncedItems.length === 0) {
+        setStatus("Your cart items are outdated. Please add products again from the shop.");
+      } else {
+        setStatus("");
+      }
+      setReady(true);
+    }
+    prepareCheckout();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    async function loadSavedAddress() {
+      const saved = await getAddresses().catch(() => []);
+      const latest = saved[0];
+      setAddress((current) => ({
+        ...current,
+        full_name: current.full_name || latest?.full_name || user?.name || "",
+        email: current.email || latest?.email || user?.email || "",
+        phone: current.phone || latest?.phone || user?.phone_number || "",
+        address: current.address || latest?.address || "",
+        city: current.city || latest?.city || "",
+        state: current.state || latest?.state || "",
+        pincode: current.pincode || latest?.pincode || "",
+      }));
+    }
+    loadSavedAddress();
+  }, [user]);
 
   async function submitOrder() {
+    if (!user) {
+      setStatus("Login is required before checkout.");
+      openLogin();
+      return;
+    }
     if (items.length === 0) {
-      setStatus("Add the tank cover to cart before checkout.");
+      setStatus("Your cart is empty. Add a tank cover before checkout.");
+      return;
+    }
+    const missingField = Object.entries(address).find(([, value]) => !value.trim());
+    if (missingField) {
+      setStatus("Please complete your shipping address before payment.");
       return;
     }
 
     setLoading(true);
-    setStatus("Creating secure order...");
+    setStatus("Syncing cart...");
     try {
-      const order = await createCheckout(address, items);
+      const syncedItems = await syncCartWithBackend(items);
+      setItems(syncedItems);
+      if (syncedItems.length === 0) {
+        setStatus("Cart variants are outdated. Clear your cart and add products again.");
+        return;
+      }
+
+      setStatus("Creating secure order...");
+      const order = await createCheckout(address, syncedItems);
       const key = order.razorpay_key_id || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
 
       if (!key) {
@@ -77,10 +137,10 @@ export default function CheckoutPage() {
         return;
       }
       setStatus("Opening Razorpay checkout...");
-      const scriptReady = razorpayReady || await loadRazorpayScript();
+      const scriptReady = razorpayReady || (await loadRazorpayScript());
       setRazorpayReady(scriptReady);
       if (!scriptReady || !window.Razorpay) {
-        setStatus("Razorpay checkout script could not load. Check internet connection, ad blocker, or browser blocking settings.");
+        setStatus("Razorpay checkout script could not load. Check your connection or ad blocker.");
         return;
       }
 
@@ -89,12 +149,12 @@ export default function CheckoutPage() {
         amount: Math.round(order.total * 100),
         currency: "INR",
         name: "OUTRAN",
-        description: "Terrain Core Tank Cover",
+        description: "OUTRAN Tank Cover Order",
         order_id: order.razorpay_order_id,
         prefill: {
           name: address.full_name,
           email: address.email,
-          contact: address.phone
+          contact: address.phone,
         },
         handler: async (payment: {
           razorpay_order_id: string;
@@ -106,15 +166,15 @@ export default function CheckoutPage() {
             order_id: order.order_id,
             razorpay_order_id: payment.razorpay_order_id,
             razorpay_payment_id: payment.razorpay_payment_id,
-            razorpay_signature: payment.razorpay_signature
+            razorpay_signature: payment.razorpay_signature,
           });
           clear();
           router.push(`/order-success?order=${order.order_number}`);
         },
         modal: {
-          ondismiss: () => setStatus("Payment window closed. Your order is saved, but payment is pending.")
+          ondismiss: () => setStatus("Payment window closed. Your order is saved, but payment is pending."),
         },
-        theme: { color: "#C97D3A" }
+        theme: { color: "#C97D3A" },
       });
       razorpay.open();
     } catch (error) {
@@ -125,96 +185,110 @@ export default function CheckoutPage() {
   }
 
   return (
-    <main className="pt-20">
+    <main className="pt-24 pb-10">
       <Script
         src="https://checkout.razorpay.com/v1/checkout.js"
         strategy="afterInteractive"
         onLoad={() => setRazorpayReady(true)}
-        onError={() => setStatus("Razorpay checkout script failed to load. Check internet or browser blocking settings.")}
+        onError={() => setStatus("Razorpay checkout script failed to load.")}
       />
-      <section className="relative overflow-hidden">
-        <Image src="/assets/checkout-page.jpeg" alt="" fill className="object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black via-black/55 to-black/35" />
-        <div className="container-x relative z-10 py-10">
-          <p className="text-sm font-black uppercase tracking-[.18em] text-accent-primary">Checkout</p>
-          <h1 className="tactical-title mt-3 max-w-4xl text-5xl uppercase md:text-7xl">Secure your gear. We&apos;ll handle <span className="orange-text">the rest.</span></h1>
-          <div className="mt-7 grid gap-3 md:grid-cols-4">
-            {checkoutSteps.map((step, index) => (
-              <div key={step} className="flex items-center gap-3 border-t border-border-primary pt-4">
-                <span className="grid h-10 w-10 place-items-center rounded-full border border-accent-primary text-accent-primary">0{index + 1}</span>
-                <span className="font-black">{step}</span>
+
+      <div className="container-x mb-8">
+        <p className="text-sm font-black uppercase tracking-[.18em] text-accent-primary">Checkout</p>
+        <h1 className="tactical-title mt-2 text-4xl uppercase md:text-5xl">Secure payment</h1>
+        <p className="mt-2 max-w-2xl text-text-secondary">Enter shipping details and pay the final amount. No GST added at checkout.</p>
+      </div>
+
+      {!ready ? (
+        <div className="container-x cinematic-panel p-8 text-sm text-text-secondary">Preparing checkout...</div>
+      ) : (
+        <section className="container-x grid gap-6 lg:grid-cols-[1fr_430px]">
+          <form className="grid gap-5" onSubmit={(event) => event.preventDefault()}>
+            {!user && (
+              <div className="cinematic-panel p-5">
+                <p className="text-sm text-text-secondary">Login to continue with secure checkout and save this cart to your account.</p>
+                <button onClick={openLogin} className="mt-4 bg-accent-primary px-5 py-3 text-sm font-black uppercase text-bg-primary" type="button">
+                  Login
+                </button>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="container-x grid gap-6 py-10 lg:grid-cols-[1fr_430px]">
-        <form className="grid gap-5" onSubmit={(event) => event.preventDefault()}>
-          <CheckoutBlock icon={MapPin} title="Shipping details">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field icon={User} label="Full Name" value={address.full_name} onChange={(value) => setAddress({ ...address, full_name: value })} />
-              <Field icon={Phone} label="Phone Number" value={address.phone} onChange={(value) => setAddress({ ...address, phone: value })} />
-            </div>
-            <Field icon={Mail} label="Email Address" value={address.email} onChange={(value) => setAddress({ ...address, email: value })} />
-            <Field icon={MapPin} label="Address" value={address.address} onChange={(value) => setAddress({ ...address, address: value })} />
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field label="City" value={address.city} onChange={(value) => setAddress({ ...address, city: value })} />
-              <Field label="State" value={address.state} onChange={(value) => setAddress({ ...address, state: value })} />
-              <Field label="Pincode" value={address.pincode} onChange={(value) => setAddress({ ...address, pincode: value })} />
-            </div>
-          </CheckoutBlock>
-
-          <CheckoutBlock icon={CreditCard} title="Payment method">
-            <div className="border border-accent-primary bg-accent-primary/10 p-4 text-sm">
-              <p className="font-black uppercase text-accent-primary">Razorpay secure checkout</p>
-              <p className="mt-2 text-text-secondary">Supports UPI, cards, net banking, and wallets through your Razorpay account.</p>
-            </div>
-          </CheckoutBlock>
-        </form>
-
-        <aside className="cinematic-panel h-max p-5">
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-3xl uppercase">Order summary</h2>
-            <span className="text-sm text-text-secondary">{items.length} items</span>
-          </div>
-          <div className="mt-5 grid gap-4">
-            {items.length === 0 && <p className="text-sm text-text-secondary">Your cart is empty.</p>}
-            {items.map((item) => (
-              <div key={item.id} className="grid grid-cols-[92px_1fr_auto] gap-4">
-                <div className="relative aspect-square overflow-hidden"><Image src={item.image} alt={item.name} fill className="object-cover" /></div>
-                <div>
-                  <p className="font-black">{item.name}</p>
-                  <p className="text-sm text-text-secondary">
-                    {item.subtitle}
-                    <br />
-                    {item.color} · {item.bike_model}
-                    <br />
-                    Qty: {item.qty}
-                  </p>
-                </div>
-                <p className="font-black">{formatINR(item.price * item.qty)}</p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-6 grid gap-3 border-y border-border-primary py-5 text-sm">
-            <div className="flex justify-between"><span>Subtotal</span><span>{formatINR(subtotal())}</span></div>
-            {discountTotal() > 0 && (
-              <div className="flex justify-between text-success"><span>Savings</span><span>-{formatINR(discountTotal())}</span></div>
             )}
-            <div className="flex justify-between"><span>Shipping</span><span>{shipping() === 0 ? "FREE" : formatINR(shipping())}</span></div>
-          </div>
-          <div className="mt-6 flex justify-between">
-            <span className="font-black">Total Amount</span>
-            <span className="text-3xl font-black text-accent-primary">{formatINR(total())}</span>
-          </div>
-          <button onClick={submitOrder} disabled={loading || items.length === 0} className="mt-6 flex w-full items-center justify-center gap-3 bg-accent-primary px-6 py-3.5 text-sm font-black uppercase text-bg-primary disabled:cursor-not-allowed disabled:opacity-50">
-            <LockKeyhole size={17} /> {loading ? "Creating order..." : "Pay securely"} <ArrowRight size={17} />
-          </button>
-          {status && <p className="mt-4 text-center text-sm text-text-secondary">{status}</p>}
-          <p className="mt-5 text-center text-xs text-text-secondary">By placing this order, you agree to our Terms & Conditions and Privacy Policy.</p>
-        </aside>
-      </section>
+            <CheckoutBlock icon={MapPin} title="Shipping details">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field icon={User} label="Full Name" value={address.full_name} onChange={(value) => setAddress({ ...address, full_name: value })} />
+                <Field icon={Phone} label="Phone Number" value={address.phone} onChange={(value) => setAddress({ ...address, phone: value })} />
+              </div>
+              <Field icon={Mail} label="Email Address" value={address.email} onChange={(value) => setAddress({ ...address, email: value })} />
+              <Field icon={MapPin} label="Address" value={address.address} onChange={(value) => setAddress({ ...address, address: value })} />
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field label="City" value={address.city} onChange={(value) => setAddress({ ...address, city: value })} />
+                <Field label="State" value={address.state} onChange={(value) => setAddress({ ...address, state: value })} />
+                <Field label="Pincode" value={address.pincode} onChange={(value) => setAddress({ ...address, pincode: value })} />
+              </div>
+            </CheckoutBlock>
+
+            <CheckoutBlock icon={CreditCard} title="Payment method">
+              <div className="border border-accent-primary bg-accent-primary/10 p-4 text-sm">
+                <p className="font-black uppercase text-accent-primary">Razorpay secure checkout</p>
+                <p className="mt-2 text-text-secondary">Supports UPI, cards, net banking, and wallets.</p>
+              </div>
+            </CheckoutBlock>
+          </form>
+
+          <aside className="cinematic-panel h-max p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-3xl uppercase">Order summary</h2>
+              <span className="text-sm text-text-secondary">{items.length} items</span>
+            </div>
+            <div className="mt-5 grid gap-4">
+              {items.length === 0 && <p className="text-sm text-text-secondary">Your cart is empty.</p>}
+              {items.map((item) => (
+                <div key={item.lineId} className="grid grid-cols-[92px_1fr_auto] gap-4">
+                  <div className="relative aspect-square overflow-hidden">
+                    <Image src={item.image} alt={item.name} fill className="object-cover" />
+                  </div>
+                  <div>
+                    <p className="font-black">{item.name}</p>
+                    <p className="text-sm text-text-secondary">
+                      {item.color} · {item.bike_model}
+                      <br />
+                      Qty: {item.qty}
+                    </p>
+                  </div>
+                  <p className="font-black">{formatINR(item.price * item.qty)}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 grid gap-3 border-y border-border-primary py-5 text-sm">
+              <div className="flex justify-between">
+                <span>Subtotal</span>
+                <span>{formatINR(subtotal())}</span>
+              </div>
+              {discountTotal() > 0 && (
+                <div className="flex justify-between text-success">
+                  <span>Savings</span>
+                  <span>-{formatINR(discountTotal())}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span>Shipping</span>
+                <span>{shipping() === 0 ? "FREE" : formatINR(shipping())}</span>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-between">
+              <span className="font-black">Total Amount</span>
+              <span className="text-3xl font-black text-accent-primary">{formatINR(total())}</span>
+            </div>
+            <button
+              onClick={submitOrder}
+              disabled={loading || items.length === 0}
+              className="mt-6 flex w-full items-center justify-center gap-3 bg-accent-primary px-6 py-3.5 text-sm font-black uppercase text-bg-primary disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <LockKeyhole size={17} /> {loading ? "Processing..." : "Pay securely"} <ArrowRight size={17} />
+            </button>
+            {status && <p className="mt-4 text-center text-sm text-text-secondary">{status}</p>}
+          </aside>
+        </section>
+      )}
     </main>
   );
 }
@@ -222,7 +296,9 @@ export default function CheckoutPage() {
 function CheckoutBlock({ icon: Icon, title, children }: { icon: ElementType; title: string; children: ReactNode }) {
   return (
     <section className="cinematic-panel p-5">
-      <h2 className="mb-4 flex items-center gap-3 font-display text-3xl uppercase"><Icon className="text-accent-primary" /> {title}</h2>
+      <h2 className="mb-4 flex items-center gap-3 font-display text-3xl uppercase">
+        <Icon className="text-accent-primary" /> {title}
+      </h2>
       <div className="grid gap-4">{children}</div>
     </section>
   );

@@ -17,15 +17,16 @@ export function ProductPageClient({ product }: { product: StoreProduct }) {
   const unitPrice = product.discounted_price ?? selectedVariant?.price ?? product.price;
 
   return (
-    <div className="contents">
-      <div>
-        <p className="mb-4 text-xs uppercase text-text-secondary">
-          Home / Shop / {product.category} / {product.name}
-        </p>
-        <ProductGallery images={gallery} alt={product.name} />
-      </div>
+    <div>
+      <p className="mb-4 text-xs uppercase text-text-secondary">
+        Home / Shop / {product.category} / {product.name}
+      </p>
+      <div className="grid items-start gap-8 lg:grid-cols-[1.18fr_.82fr]">
+        <div>
+          <ProductGallery images={gallery} alt={product.name} />
+        </div>
 
-      <aside className="lg:sticky lg:top-24 lg:h-max">
+        <aside className="lg:sticky lg:top-24 lg:h-max">
         {product.badge && (
           <p className="mb-3 inline-flex border border-accent-primary/60 px-3 py-1 text-xs font-black uppercase tracking-[.16em] text-badge-founder">
             {product.badge}
@@ -55,6 +56,7 @@ export function ProductPageClient({ product }: { product: StoreProduct }) {
           onVariantChange={setSelectedVariantId}
         />
       </aside>
+      </div>
     </div>
   );
 }

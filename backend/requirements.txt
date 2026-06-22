@@ -9,3 +9,5 @@ python-multipart==0.0.20
 razorpay==1.4.2
 cloudinary==1.41.0
 slowapi==0.1.9
+PyJWT==2.10.1
+google-auth==2.36.0

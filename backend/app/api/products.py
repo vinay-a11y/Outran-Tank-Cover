@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, selectinload
 from backend.app.db.session import get_db
 from backend.app.models.entities import Category, Product, ProductVariant
@@ -42,27 +42,55 @@ def _apply_filters(
     stock_status: str | None,
     sort: str | None,
 ):
+    variant_joined = False
     if category:
         stmt = stmt.join(Category, Product.category_id == Category.id).where(
             or_(Category.slug == category, Category.name.ilike(f"%{category}%"))
         )
     if search:
-        stmt = stmt.where(
-            or_(
-                Product.name.ilike(f"%{search}%"),
-                Product.description.ilike(f"%{search}%"),
-                Product.short_description.ilike(f"%{search}%"),
-                Product.supported_bike_models.ilike(f"%{search}%"),
+        terms = [term for term in search.split() if term]
+        if terms:
+            stmt = stmt.join(ProductVariant, isouter=True).where(
+                and_(
+                    *[
+                        or_(
+                            Product.name.ilike(f"%{term}%"),
+                            Product.description.ilike(f"%{term}%"),
+                            Product.short_description.ilike(f"%{term}%"),
+                            Product.supported_bike_models.ilike(f"%{term}%"),
+                            Product.sku.ilike(f"%{term}%"),
+                            Product.product_code.ilike(f"%{term}%"),
+                            ProductVariant.color.ilike(f"%{term}%"),
+                            ProductVariant.material.ilike(f"%{term}%"),
+                            ProductVariant.size.ilike(f"%{term}%"),
+                            ProductVariant.sku.ilike(f"%{term}%"),
+                        )
+                        for term in terms
+                    ]
+                )
             )
-        )
+            variant_joined = True
     if bike_model:
         stmt = stmt.where(Product.supported_bike_models.ilike(f"%{bike_model}%"))
     if color:
-        stmt = stmt.join(ProductVariant).where(ProductVariant.color.ilike(f"%{color}%"))
+        if not variant_joined:
+            stmt = stmt.join(ProductVariant)
+            variant_joined = True
+        stmt = stmt.where(ProductVariant.color.ilike(f"%{color}%"))
     if stock_status == "in_stock":
-        stmt = stmt.join(ProductVariant).where(ProductVariant.stock > 0)
+        if not variant_joined:
+            stmt = stmt.join(ProductVariant)
+            variant_joined = True
+        stmt = stmt.where(ProductVariant.stock > 0)
+    elif stock_status == "low_stock":
+        if not variant_joined:
+            stmt = stmt.join(ProductVariant)
+            variant_joined = True
+        stmt = stmt.where(ProductVariant.stock > 0, ProductVariant.stock <= 5)
     elif stock_status == "out_of_stock":
-        stmt = stmt.join(ProductVariant).where(ProductVariant.stock <= 0)
+        if not variant_joined:
+            stmt = stmt.join(ProductVariant)
+        stmt = stmt.where(ProductVariant.stock <= 0)
     if sort == "price_asc":
         stmt = stmt.order_by(Product.price.asc())
     elif sort == "price_desc":

@@ -4,7 +4,7 @@ from slowapi import Limiter
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
-from backend.app.api import admin, content, orders, products
+from backend.app.api import address, admin, auth, cart, content, orders, products, wishlist
 from backend.app.core.config import settings
 from backend.app.db.migrate import run_migrations
 from backend.app.db.session import Base, SessionLocal, engine
@@ -30,7 +30,11 @@ app.add_middleware(
 )
 
 app.include_router(products.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
+app.include_router(cart.router, prefix="/api")
 app.include_router(orders.router, prefix="/api")
+app.include_router(address.router, prefix="/api")
+app.include_router(wishlist.router, prefix="/api")
 app.include_router(content.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 

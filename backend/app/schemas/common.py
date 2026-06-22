@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class ProductImageOut(BaseModel):
@@ -96,6 +96,8 @@ class ProductOut(BaseModel):
 class CheckoutItem(BaseModel):
     product_id: str
     variant_id: int | None = None
+    variant_sku: str | None = None
+    color: str | None = None
     bike_model: str | None = None
     quantity: int = Field(gt=0)
 
@@ -108,6 +110,13 @@ class ShippingAddressIn(BaseModel):
     city: str
     state: str
     pincode: str
+
+    @field_validator("full_name", "phone", "email", "address", "city", "state", "pincode")
+    @classmethod
+    def required_text(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("Shipping address is incomplete")
+        return value.strip()
 
 
 class CheckoutIn(BaseModel):
