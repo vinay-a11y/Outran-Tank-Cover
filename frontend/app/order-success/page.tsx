@@ -11,7 +11,14 @@ type SearchParams = Promise<{
 
 export default async function OrderSuccessPage({ searchParams }: { searchParams: SearchParams }) {
   const { order: orderNumber } = await searchParams;
-  const order = orderNumber ? await getOrder(orderNumber) : null;
+  let order = null;
+  if (orderNumber) {
+    try {
+      order = await getOrder(orderNumber);
+    } catch (error) {
+      console.error("Failed to load order details:", error);
+    }
+  }
   const timeline: Array<[string, ElementType]> = [
     ["Confirmed", Check],
     ["Processing", PackageCheck],

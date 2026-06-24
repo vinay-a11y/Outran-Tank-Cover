@@ -73,7 +73,11 @@ export async function getMe(): Promise<UserAccount | null> {
   try {
     const response = await apiClient.get<{ user: UserAccount }>("/auth/me");
     return response.data.user;
-  } catch {
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      return null;
+    }
+    console.error("Failed to fetch current user:", error);
     return null;
   }
 }

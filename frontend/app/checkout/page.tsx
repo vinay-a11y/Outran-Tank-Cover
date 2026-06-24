@@ -82,7 +82,10 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (!user) return;
     async function loadSavedAddress() {
-      const saved = await getAddresses().catch(() => []);
+      const saved = await getAddresses().catch((error) => {
+        console.error("Failed to load saved addresses:", error);
+        return [];
+      });
       const latest = saved[0];
       setAddress((current) => ({
         ...current,
@@ -162,14 +165,22 @@ export default function CheckoutPage() {
           razorpay_signature: string;
         }) => {
           setStatus("Verifying payment...");
-          await verifyPayment({
-            order_id: order.order_id,
-            razorpay_order_id: payment.razorpay_order_id,
-            razorpay_payment_id: payment.razorpay_payment_id,
-            razorpay_signature: payment.razorpay_signature,
-          });
-          clear();
-          router.push(`/order-success?order=${order.order_number}`);
+          try {
+            await verifyPayment({
+              order_id: order.order_id,
+              razorpay_order_id: payment.razorpay_order_id,
+              razorpay_payment_id: payment.razorpay_payment_id,
+              razorpay_signature: payment.razorpay_signature,
+            });
+            clear();
+            router.push(`/order-success?order=${order.order_number}`);
+          } catch (verifyError) {
+            setStatus(
+              verifyError instanceof Error
+                ? verifyError.message
+                : "Payment verification failed. Contact support if money was debited."
+            );
+          }
         },
         modal: {
           ondismiss: () => setStatus("Payment window closed. Your order is saved, but payment is pending."),
