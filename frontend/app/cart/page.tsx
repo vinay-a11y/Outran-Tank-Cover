@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Minus, Plus, Trash2, ArrowRight } from "lucide-react";
+import { OrderSummary } from "@/components/order-summary";
 import { ProductCard } from "@/components/product-card";
 import { getProducts, type StoreProduct } from "@/lib/api";
 import { formatINR } from "@/lib/utils";
@@ -95,38 +96,20 @@ export default function CartPage() {
         </div>
         <aside className="cinematic-panel h-max p-5">
           <h2 className="font-display text-3xl uppercase">Order summary</h2>
-          <div className="mt-5 grid gap-3 border-b border-border-primary pb-5 text-sm">
-            <div className="flex justify-between">
-              <span>Subtotal ({items.length} lines)</span>
-              <span>{formatINR(subtotal())}</span>
-            </div>
-            {discountTotal() > 0 && (
-              <div className="flex justify-between text-success">
-                <span>Product savings</span>
-                <span>-{formatINR(discountTotal())}</span>
-              </div>
+          <OrderSummary subtotal={subtotal()} discount={discountTotal()} shipping={shipping()} total={total()} lineCount={items.length} totalLabel="Order total">
+            {items.length > 0 ? (
+              <Link
+                href="/checkout"
+                className="mt-6 flex items-center justify-center gap-3 bg-accent-primary px-6 py-3.5 text-sm font-black uppercase text-bg-primary"
+              >
+                Proceed to checkout <ArrowRight size={17} />
+              </Link>
+            ) : (
+              <span className="mt-6 flex items-center justify-center gap-3 bg-accent-primary/35 px-6 py-3.5 text-sm font-black uppercase text-bg-primary/60">
+                Add items to checkout
+              </span>
             )}
-            <div className="flex justify-between">
-              <span>Shipping</span>
-              <span>{shipping() === 0 ? "FREE" : formatINR(shipping())}</span>
-            </div>
-          </div>
-          <div className="mt-6 flex justify-between">
-            <span className="font-black uppercase">Order total</span>
-            <span className="text-3xl font-black text-accent-primary">{formatINR(total())}</span>
-          </div>
-          {items.length > 0 ? (
-            <Link
-              href="/checkout"
-              className="mt-6 flex items-center justify-center gap-3 bg-accent-primary px-6 py-3.5 text-sm font-black uppercase text-bg-primary"
-            >
-              Proceed to checkout <ArrowRight size={17} />
-            </Link>
-          ) : (
-            <span className="mt-6 flex items-center justify-center gap-3 bg-accent-primary/35 px-6 py-3.5 text-sm font-black uppercase text-bg-primary/60">
-              Add items to checkout
-            </span>
-          )}
+          </OrderSummary>
         </aside>
       </section>
 

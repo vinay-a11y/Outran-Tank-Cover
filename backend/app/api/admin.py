@@ -1,12 +1,12 @@
 import json
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 from backend.app.core.config import settings
 from backend.app.db.session import get_db
-from backend.app.models.entities import Category, Product, ProductImage, ProductVariant
+from backend.app.models.entities import Category, Product, ProductImage
 from backend.app.schemas.admin import ProductCreateIn, ProductUpdateIn
-from backend.app.services.catalog import get_category_map, product_to_out, save_product_variants, seed_catalog
+from backend.app.services.catalog import product_load_options, product_to_out, save_product_variants, seed_catalog, serialize_products
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -23,21 +23,10 @@ def admin_list_products(
 ):
     products = db.scalars(
         select(Product)
-        .options(
-            selectinload(Product.images),
-            selectinload(Product.variants).selectinload(ProductVariant.images),
-        )
+        .options(*product_load_options())
         .order_by(Product.created_at.desc())
     ).all()
-    category_map = get_category_map(db)
-    return [
-        product_to_out(
-            product,
-            category_map.get(product.category_id, ("Tank Covers", "tank-covers"))[0],
-            category_map.get(product.category_id, ("Tank Covers", "tank-covers"))[1],
-        )
-        for product in products
-    ]
+    return serialize_products(products, db)
 
 
 def _save_product_images(db: Session, product_id: int, images: list) -> None:

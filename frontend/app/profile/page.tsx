@@ -6,6 +6,7 @@ import { CalendarDays, CheckCircle2, LogOut, Mail, MapPin, Package, Pencil, Phon
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/components/auth-provider";
+import { FormField } from "@/components/form-field";
 import { getAddresses, updateProfile } from "@/lib/auth-api";
 
 export default function ProfilePage() {
@@ -177,8 +178,8 @@ export default function ProfilePage() {
                 <button onClick={() => setEditing(false)} aria-label="Close profile editor" className="grid h-10 w-10 place-items-center rounded-md border border-border-primary text-text-secondary hover:text-text-primary"><X size={18} /></button>
               </div>
               <div className="mt-6 grid gap-4">
-                <Field label="Name" value={name} onChange={setName} />
-                <Field label="Phone number" value={phoneNumber} onChange={setPhoneNumber} type="tel" />
+                <FormField label="Name" value={name} onChange={setName} />
+                <FormField label="Phone number" value={phoneNumber} onChange={setPhoneNumber} type="tel" />
                 {status && <p className="rounded border border-accent-primary/40 bg-accent-primary/10 px-3 py-2 text-sm text-text-primary">{status}</p>}
                 <div className="mt-2 flex flex-wrap gap-3">
                   <button disabled={saving} onClick={save} className="rounded-md bg-accent-primary px-6 py-3 text-sm font-black uppercase text-bg-primary disabled:opacity-60">{saving ? "Saving..." : "Save changes"}</button>
@@ -223,11 +224,4 @@ function QuickLink({ href, icon: Icon, title, copy }: { href: string; icon: type
   );
 }
 
-function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {
-  return (
-    <label className="block rounded-md border border-border-primary bg-black/15 px-4 py-3 focus-within:border-accent-primary">
-      <span className="mb-2 block text-xs font-black uppercase text-text-secondary">{label}</span>
-      <input type={type} className="w-full bg-transparent outline-none" value={value} onChange={(event) => onChange(event.target.value)} />
-    </label>
-  );
-}
+

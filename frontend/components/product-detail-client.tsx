@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Minus, Plus } from "lucide-react";
 import type { StoreProduct } from "@/lib/api";
+import { getDefaultVariant } from "@/lib/api";
 import { buildCartItemFromProduct, useCart } from "@/store/cart";
 
 type Props = {
@@ -15,7 +16,7 @@ type Props = {
 export function ProductDetailClient({ product, selectedVariantId, onVariantChange }: Props) {
   const router = useRouter();
   const addItem = useCart((state) => state.addItem);
-  const defaultVariant = product.variants.find((variant) => variant.is_default) ?? product.variants[0];
+  const defaultVariant = getDefaultVariant(product);
   const [selectedBike, setSelectedBike] = useState(product.supported_bike_models[0] ?? "Standard");
   const [quantity, setQuantity] = useState(1);
 

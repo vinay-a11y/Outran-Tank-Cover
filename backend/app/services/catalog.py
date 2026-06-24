@@ -492,3 +492,25 @@ def seed_single_tank_cover(db: Session) -> None:
 def get_category_map(db: Session) -> dict[int, tuple[str, str]]:
     categories = db.scalars(select(Category)).all()
     return {category.id: (category.name, category.slug) for category in categories}
+
+
+_CATEGORY_FALLBACK = ("Tank Covers", "tank-covers")
+
+
+def product_load_options():
+    return (
+        selectinload(Product.images),
+        selectinload(Product.variants).selectinload(ProductVariant.images),
+    )
+
+
+def serialize_products(products: list[Product], db: Session) -> list[dict]:
+    category_map = get_category_map(db)
+    return [
+        product_to_out(
+            product,
+            category_map.get(product.category_id, _CATEGORY_FALLBACK)[0],
+            category_map.get(product.category_id, _CATEGORY_FALLBACK)[1],
+        )
+        for product in products
+    ]
