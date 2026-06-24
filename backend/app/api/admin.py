@@ -1,7 +1,10 @@
 import json
+import secrets as _secrets
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
+
 from backend.app.core.config import settings
 from backend.app.db.session import get_db
 from backend.app.models.entities import Category, Product, ProductImage, ProductVariant
@@ -12,7 +15,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 def verify_admin(x_admin_key: str = Header(default="")) -> None:
-    if not settings.admin_api_key or x_admin_key != settings.admin_api_key:
+    if not settings.admin_api_key or not _secrets.compare_digest(x_admin_key, settings.admin_api_key):
         raise HTTPException(status_code=401, detail="Invalid admin key")
 
 

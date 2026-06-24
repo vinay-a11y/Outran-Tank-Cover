@@ -1,4 +1,6 @@
 import secrets
+import string
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
@@ -120,7 +122,7 @@ def checkout(payload: CheckoutIn, db: Session = Depends(get_db), current_user: U
             if older_addresses:
                 db.execute(delete(UserAddress).where(UserAddress.id.in_(older_addresses)))
     order = Order(
-        order_number=f"OTR{secrets.randbelow(89999) + 10000}",
+        order_number=f"OTR{''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(12))}",
         user_id=current_user.id if isinstance(current_user, User) else None,
         shipping_address_id=address.id,
         subtotal=round(subtotal, 2),
@@ -232,7 +234,7 @@ def get_order(order_number: str, db: Session = Depends(get_db), current_user: Us
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if current_user and order.user_id and order.user_id != current_user.id:
+    if order.user_id and (not current_user or order.user_id != current_user.id):
         raise HTTPException(status_code=404, detail="Order not found")
 
     return _order_detail_payload(db, order)
