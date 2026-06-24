@@ -130,16 +130,21 @@ def delete_cart_item(line_id: str, db: Session = Depends(get_db), user: User = D
     parts = line_id.split(":")
     if len(parts) < 3:
         raise HTTPException(status_code=400, detail="Invalid cart line id")
-    product_id, variant_id, bike_model = parts[0], parts[1], ":".join(parts[2:])
+    product_id, variant_id_raw, bike_model = parts[0], parts[1], ":".join(parts[2:])
+    try:
+        variant_id = int(variant_id_raw)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid variant id in cart line id")
     item = db.scalar(
         select(CartItem).where(
             CartItem.user_id == user.id,
             CartItem.product_id == product_id,
-            CartItem.variant_id == int(variant_id),
+            CartItem.variant_id == variant_id,
             CartItem.bike_model == bike_model,
         )
     )
-    if item:
-        db.delete(item)
-        db.commit()
+    if not item:
+        raise HTTPException(status_code=404, detail="Cart item not found")
+    db.delete(item)
+    db.commit()
     return {"ok": True}

@@ -183,6 +183,7 @@ export function buildCartItemFromProduct(
 
 export async function syncCartWithBackend(items: CartItem[]): Promise<CartItem[]> {
   const synced: CartItem[] = [];
+  const errors: Array<{ productId: string; error: unknown }> = [];
   for (const item of items) {
     try {
       const product = await getProduct(item.id);
@@ -200,9 +201,13 @@ export async function syncCartWithBackend(items: CartItem[]): Promise<CartItem[]
         lineId: buildLineId(product.id, variant.id, bikeModel),
         qty: Math.min(item.qty, variant.stock),
       });
-    } catch {
-      continue;
+    } catch (error) {
+      console.error(`Failed to sync cart item "${item.id}":`, error);
+      errors.push({ productId: item.id, error });
     }
+  }
+  if (errors.length > 0 && synced.length === 0) {
+    throw new Error("Failed to sync cart with backend. Check your connection and try again.");
   }
   return synced;
 }

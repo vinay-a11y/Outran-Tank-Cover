@@ -274,10 +274,18 @@ export async function getHomepage(): Promise<HomepageData> {
 export async function getOrder(orderNumber: string): Promise<OrderData | null> {
   try {
     const response = await fetchWithTimeout(`${API_BASE_URL}/orders/${orderNumber}`, { cache: "no-store", credentials: "include" });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      if (response.status === 404) return null;
+      const body = await response.json().catch(() => ({ detail: "Order fetch failed" }));
+      throw new Error(body.detail ?? `Order request failed (${response.status})`);
+    }
     return response.json();
-  } catch {
-    return null;
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes("fetch")) {
+      console.error("Network error fetching order:", error);
+      return null;
+    }
+    throw error;
   }
 }
 

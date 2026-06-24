@@ -1,5 +1,9 @@
+import logging
+
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
+
+logger = logging.getLogger(__name__)
 
 
 CATEGORY_COLUMNS = {
@@ -60,11 +64,15 @@ def _add_columns(engine: Engine, table: str, columns: dict[str, str]) -> None:
         for name, column_type in columns.items():
             if name in existing:
                 continue
-            if dialect == "sqlite":
-                sql_type = column_type.replace("BOOLEAN", "INTEGER")
-                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sql_type}"))
-            else:
-                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {column_type}"))
+            try:
+                if dialect == "sqlite":
+                    sql_type = column_type.replace("BOOLEAN", "INTEGER")
+                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sql_type}"))
+                else:
+                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {column_type}"))
+            except Exception:
+                logger.exception("Failed to add column %s to table %s", name, table)
+                raise
 
 
 def run_migrations(engine: Engine) -> None:

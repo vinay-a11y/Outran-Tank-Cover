@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter
@@ -9,6 +11,8 @@ from backend.app.core.config import settings
 from backend.app.db.migrate import run_migrations
 from backend.app.db.session import Base, SessionLocal, engine
 from backend.app.services.catalog import seed_catalog
+
+logger = logging.getLogger(__name__)
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -47,6 +51,10 @@ def startup():
     db = SessionLocal()
     try:
         seed_catalog(db)
+    except Exception:
+        db.rollback()
+        logger.exception("Catalog seeding failed during startup")
+        raise
     finally:
         db.close()
 

@@ -47,7 +47,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const account = await getMe();
     setUser(account);
     if (account) {
-      const serverItems = await getCart().catch(() => null);
+      const serverItems = await getCart().catch((error) => {
+        console.error("Failed to load server cart:", error);
+        return null;
+      });
       if (serverItems) setItems(serverItems);
     }
     setLoading(false);
@@ -60,7 +63,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user) return;
     const timer = window.setTimeout(() => {
-      replaceCart(items).catch(() => undefined);
+      replaceCart(items).catch((error) => {
+        console.error("Failed to sync cart to server:", error);
+      });
     }, 500);
     return () => window.clearTimeout(timer);
   }, [items, user]);
@@ -86,7 +91,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function logout() {
-    await logoutAccount();
+    try {
+      await logoutAccount();
+    } catch (error) {
+      console.error("Logout request failed:", error);
+    }
     setUser(null);
     clear();
     setToast("Logged out");

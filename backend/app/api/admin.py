@@ -146,5 +146,11 @@ def admin_seed(
     db: Session = Depends(get_db),
     _: None = Depends(verify_admin),
 ):
-    seed_catalog(db)
+    try:
+        seed_catalog(db)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500, detail=f"Catalog seeding failed: {exc}"
+        ) from exc
     return {"status": "seeded"}
