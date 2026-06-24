@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { Star } from "lucide-react";
 import type { StoreProduct } from "@/lib/api";
+import { getDefaultVariant } from "@/lib/api";
 import { ProductGallery } from "@/components/product-gallery";
 import { ProductDetailClient } from "@/components/product-detail-client";
 import { formatINR } from "@/lib/utils";
 
 export function ProductPageClient({ product }: { product: StoreProduct }) {
-  const defaultVariant = product.variants.find((variant) => variant.is_default) ?? product.variants[0];
+  const defaultVariant = getDefaultVariant(product);
   const [selectedVariantId, setSelectedVariantId] = useState(defaultVariant?.id ?? 0);
   const selectedVariant = product.variants.find((variant) => variant.id === selectedVariantId) ?? defaultVariant;
   const gallery = selectedVariant?.images?.length

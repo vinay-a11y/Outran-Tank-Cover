@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ElementType } from "react";
 import { Check, Mail, PackageCheck, Truck, ShieldCheck, ArrowRight } from "lucide-react";
 import { getOrder } from "@/lib/api";
+import { OrderSummary } from "@/components/order-summary";
 import { formatINR } from "@/lib/utils";
 
 type SearchParams = Promise<{
@@ -96,17 +97,7 @@ export default async function OrderSuccessPage({ searchParams }: { searchParams:
         <aside className="grid h-max gap-6">
           <div className="cinematic-panel p-5">
             <h2 className="font-display text-3xl uppercase">Order summary</h2>
-            <div className="mt-5 grid gap-3 border-b border-border-primary pb-5 text-sm">
-              <div className="flex justify-between"><span>Subtotal</span><span>{formatINR(order?.subtotal ?? 0)}</span></div>
-              {(order?.discount ?? 0) > 0 && (
-                <div className="flex justify-between text-success"><span>Savings</span><span>-{formatINR(order!.discount)}</span></div>
-              )}
-              <div className="flex justify-between"><span>Shipping</span><span>{(order?.shipping ?? 0) === 0 ? "FREE" : formatINR(order!.shipping)}</span></div>
-            </div>
-            <div className="mt-5 flex justify-between">
-              <span className="font-black uppercase">Total paid</span>
-              <span className="text-3xl font-black text-accent-primary">{formatINR(order?.total ?? 0)}</span>
-            </div>
+            <OrderSummary subtotal={order?.subtotal ?? 0} discount={order?.discount ?? 0} shipping={order?.shipping ?? 0} total={order?.total ?? 0} totalLabel="Total paid" />
           </div>
           <div className="cinematic-panel p-5">
             <h2 className="font-display text-3xl uppercase">What happens next?</h2>

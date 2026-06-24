@@ -9,6 +9,8 @@ import { CreditCard, LockKeyhole, Mail, MapPin, Phone, User, ArrowRight } from "
 import { createCheckout, verifyPayment, type CheckoutAddress } from "@/lib/api";
 import { getAddresses } from "@/lib/auth-api";
 import { useAuth } from "@/components/auth-provider";
+import { FormField } from "@/components/form-field";
+import { OrderSummary } from "@/components/order-summary";
 import { formatINR } from "@/lib/utils";
 import { syncCartWithBackend, useCart } from "@/store/cart";
 
@@ -214,15 +216,15 @@ export default function CheckoutPage() {
             )}
             <CheckoutBlock icon={MapPin} title="Shipping details">
               <div className="grid gap-4 md:grid-cols-2">
-                <Field icon={User} label="Full Name" value={address.full_name} onChange={(value) => setAddress({ ...address, full_name: value })} />
-                <Field icon={Phone} label="Phone Number" value={address.phone} onChange={(value) => setAddress({ ...address, phone: value })} />
+                <FormField icon={User} label="Full Name" value={address.full_name} onChange={(value) => setAddress({ ...address, full_name: value })} />
+                <FormField icon={Phone} label="Phone Number" value={address.phone} onChange={(value) => setAddress({ ...address, phone: value })} />
               </div>
-              <Field icon={Mail} label="Email Address" value={address.email} onChange={(value) => setAddress({ ...address, email: value })} />
-              <Field icon={MapPin} label="Address" value={address.address} onChange={(value) => setAddress({ ...address, address: value })} />
+              <FormField icon={Mail} label="Email Address" value={address.email} onChange={(value) => setAddress({ ...address, email: value })} />
+              <FormField icon={MapPin} label="Address" value={address.address} onChange={(value) => setAddress({ ...address, address: value })} />
               <div className="grid gap-4 md:grid-cols-3">
-                <Field label="City" value={address.city} onChange={(value) => setAddress({ ...address, city: value })} />
-                <Field label="State" value={address.state} onChange={(value) => setAddress({ ...address, state: value })} />
-                <Field label="Pincode" value={address.pincode} onChange={(value) => setAddress({ ...address, pincode: value })} />
+                <FormField label="City" value={address.city} onChange={(value) => setAddress({ ...address, city: value })} />
+                <FormField label="State" value={address.state} onChange={(value) => setAddress({ ...address, state: value })} />
+                <FormField label="Pincode" value={address.pincode} onChange={(value) => setAddress({ ...address, pincode: value })} />
               </div>
             </CheckoutBlock>
 
@@ -258,34 +260,16 @@ export default function CheckoutPage() {
                 </div>
               ))}
             </div>
-            <div className="mt-6 grid gap-3 border-y border-border-primary py-5 text-sm">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>{formatINR(subtotal())}</span>
-              </div>
-              {discountTotal() > 0 && (
-                <div className="flex justify-between text-success">
-                  <span>Savings</span>
-                  <span>-{formatINR(discountTotal())}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span>Shipping</span>
-                <span>{shipping() === 0 ? "FREE" : formatINR(shipping())}</span>
-              </div>
-            </div>
-            <div className="mt-6 flex justify-between">
-              <span className="font-black">Total Amount</span>
-              <span className="text-3xl font-black text-accent-primary">{formatINR(total())}</span>
-            </div>
-            <button
-              onClick={submitOrder}
-              disabled={loading || items.length === 0}
-              className="mt-6 flex w-full items-center justify-center gap-3 bg-accent-primary px-6 py-3.5 text-sm font-black uppercase text-bg-primary disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <LockKeyhole size={17} /> {loading ? "Processing..." : "Pay securely"} <ArrowRight size={17} />
-            </button>
-            {status && <p className="mt-4 text-center text-sm text-text-secondary">{status}</p>}
+            <OrderSummary subtotal={subtotal()} discount={discountTotal()} shipping={shipping()} total={total()}>
+              <button
+                onClick={submitOrder}
+                disabled={loading || items.length === 0}
+                className="mt-6 flex w-full items-center justify-center gap-3 bg-accent-primary px-6 py-3.5 text-sm font-black uppercase text-bg-primary disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <LockKeyhole size={17} /> {loading ? "Processing..." : "Pay securely"} <ArrowRight size={17} />
+              </button>
+              {status && <p className="mt-4 text-center text-sm text-text-secondary">{status}</p>}
+            </OrderSummary>
           </aside>
         </section>
       )}
@@ -304,14 +288,3 @@ function CheckoutBlock({ icon: Icon, title, children }: { icon: ElementType; tit
   );
 }
 
-function Field({ label, value, onChange, icon: Icon }: { label: string; value: string; onChange: (value: string) => void; icon?: ElementType }) {
-  return (
-    <label className="block border border-border-primary bg-black/20 px-4 py-3">
-      <span className="mb-2 block text-xs text-text-secondary">{label}</span>
-      <span className="flex items-center justify-between gap-3">
-        <input className="min-w-0 flex-1 bg-transparent outline-none" value={value} onChange={(event) => onChange(event.target.value)} />
-        {Icon && <Icon size={18} className="text-text-secondary" />}
-      </span>
-    </label>
-  );
-}

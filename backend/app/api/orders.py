@@ -1,34 +1,19 @@
 import secrets
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from backend.app.core.auth import get_current_user, get_current_user_optional
 from backend.app.core.config import settings
 from backend.app.db.session import get_db
-from backend.app.models.entities import Coupon, Order, OrderItem, Product, ProductImage, ProductVariant, ShippingAddress, User, UserAddress
+from backend.app.models.entities import Coupon, Order, OrderItem, Product, ProductVariant, ShippingAddress, User
 from backend.app.schemas.common import CheckoutIn, OrderOut, RazorpayVerifyIn
 from backend.app.services.catalog import resolve_checkout_variant, resolve_product_identifier
+from backend.app.services.addresses import save_user_address
+from backend.app.services.images import resolve_item_image
 from backend.app.services.payments import PaymentOrderError, create_payment_order, verify_payment_signature, verify_webhook
 from backend.app.services.pricing import calculate_discounted_price, calculate_line_total
 
 router = APIRouter(prefix="/orders", tags=["orders"])
-
-
-def _variant_image(variant: ProductVariant | None) -> str | None:
-    if not variant or not variant.images:
-        return None
-    images = sorted(variant.images, key=lambda item: item.sort_order)
-    thumb = next((image.url for image in images if image.is_thumbnail), None)
-    return thumb or images[0].url
-
-
-def _product_image(db: Session, product: Product) -> str | None:
-    image = db.scalar(
-        select(ProductImage)
-        .where(ProductImage.product_id == product.id)
-        .order_by(ProductImage.is_thumbnail.desc(), ProductImage.sort_order.asc())
-    )
-    return image.url if image else None
 
 
 @router.post("/checkout")
@@ -100,25 +85,7 @@ def checkout(payload: CheckoutIn, db: Session = Depends(get_db), current_user: U
     db.add(address)
     db.flush()
     if isinstance(current_user, User):
-        existing_address = db.scalar(
-            select(UserAddress).where(
-                UserAddress.user_id == current_user.id,
-                UserAddress.address == payload.address.address,
-                UserAddress.pincode == payload.address.pincode,
-            )
-        )
-        if not existing_address:
-            saved_address = UserAddress(user_id=current_user.id, **payload.address.model_dump())
-            db.add(saved_address)
-            db.flush()
-            older_addresses = db.scalars(
-                select(UserAddress.id)
-                .where(UserAddress.user_id == current_user.id, UserAddress.id != saved_address.id)
-                .order_by(UserAddress.created_at.desc())
-                .offset(1)
-            ).all()
-            if older_addresses:
-                db.execute(delete(UserAddress).where(UserAddress.id.in_(older_addresses)))
+        save_user_address(db, current_user.id, payload.address.model_dump())
     order = Order(
         order_number=f"OTR{secrets.randbelow(89999) + 10000}",
         user_id=current_user.id if isinstance(current_user, User) else None,
@@ -177,9 +144,7 @@ def _order_card(db: Session, order: Order) -> dict:
     variant = db.get(ProductVariant, first_item.variant_id) if first_item and first_item.variant_id else None
     if variant:
         db.refresh(variant, attribute_names=["images"])
-    image = _variant_image(variant) if variant else None
-    if not image and product:
-        image = _product_image(db, product)
+    image = resolve_item_image(db, product, variant) if product else None
     return {
         "id": order.id,
         "order_number": order.order_number,
@@ -245,9 +210,7 @@ def _order_detail_payload(db: Session, order: Order) -> dict:
         variant = db.get(ProductVariant, item.variant_id) if item.variant_id else None
         if variant:
             db.refresh(variant, attribute_names=["images"])
-        image = _variant_image(variant) if variant else None
-        if not image and product:
-            image = _product_image(db, product)
+        image = resolve_item_image(db, product, variant) if product else None
         items_out.append(
             {
                 "name": item.name,

@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 from backend.app.db.session import get_db
-from backend.app.models.entities import Banner, BikeModel, Category, Coupon, CrewSignup, Product, ProductVariant, Review, Setting
-from backend.app.services.catalog import get_category_map, product_to_out
+from backend.app.models.entities import Banner, BikeModel, Category, Coupon, CrewSignup, Product, Review, Setting
+from backend.app.services.catalog import product_load_options, serialize_products
 
 router = APIRouter(tags=["content"])
 
@@ -68,13 +68,6 @@ def crew_signup(payload: CrewSignupIn, db: Session = Depends(get_db)):
     return {"ok": True, "id": signup.id}
 
 
-def _product_load_options():
-    return (
-        selectinload(Product.images),
-        selectinload(Product.variants).selectinload(ProductVariant.images),
-    )
-
-
 @router.get("/homepage")
 def homepage(db: Session = Depends(get_db)):
     settings = {setting.key: setting.value for setting in db.scalars(select(Setting)).all()}
@@ -83,13 +76,13 @@ def homepage(db: Session = Depends(get_db)):
     )
     featured = db.scalars(
         select(Product)
-        .options(*_product_load_options())
+        .options(*product_load_options())
         .where(Product.is_active == True, Product.is_featured == True)
         .limit(4)
     ).all()
     latest = db.scalars(
         select(Product)
-        .options(*_product_load_options())
+        .options(*product_load_options())
         .where(Product.is_active == True)
         .order_by(Product.created_at.desc())
         .limit(4)
@@ -98,17 +91,6 @@ def homepage(db: Session = Depends(get_db)):
     bike_models_list = db.scalars(select(BikeModel).where(BikeModel.is_active == True)).all()
     offers = db.scalars(select(Coupon).where(Coupon.is_active == True).limit(3)).all()
     testimonials = db.scalars(select(Review).where(Review.is_approved == True).limit(6)).all()
-    category_map = get_category_map(db)
-
-    def serialize(products):
-        return [
-            product_to_out(
-                product,
-                category_map.get(product.category_id, ("Tank Covers", "tank-covers"))[0],
-                category_map.get(product.category_id, ("Tank Covers", "tank-covers"))[1],
-            )
-            for product in products
-        ]
 
     return {
         "hero": {
@@ -119,8 +101,8 @@ def homepage(db: Session = Depends(get_db)):
             "cta_href": hero_banner.href if hero_banner else "/products/terrain-core-tank-cover",
             "cta_label": "Shop tank cover",
         },
-        "featured_products": serialize(featured),
-        "latest_products": serialize(latest),
+        "featured_products": serialize_products(featured, db),
+        "latest_products": serialize_products(latest, db),
         "bike_categories": [
             {
                 "name": category.name,

@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.app.core.auth import get_current_user
 from backend.app.db.session import get_db
-from backend.app.models.entities import CartItem, Product, ProductImage, ProductVariant, User
+from backend.app.models.entities import CartItem, Product, ProductVariant, User
 from backend.app.services.catalog import resolve_product_identifier
+from backend.app.services.images import resolve_item_image
 from backend.app.services.pricing import calculate_discounted_price
 
 router = APIRouter(prefix="/cart", tags=["cart"])
@@ -25,16 +26,7 @@ class CartSyncIn(BaseModel):
 
 
 def _product_image(db: Session, product: Product, variant: ProductVariant | None) -> str:
-    if variant and variant.images:
-        images = sorted(variant.images, key=lambda item: item.sort_order)
-        thumb = next((image.url for image in images if image.is_thumbnail), None)
-        return thumb or images[0].url
-    image = db.scalar(
-        select(ProductImage)
-        .where(ProductImage.product_id == product.id)
-        .order_by(ProductImage.is_thumbnail.desc(), ProductImage.sort_order.asc())
-    )
-    return image.url if image else ""
+    return resolve_item_image(db, product, variant) or ""
 
 
 def _cart_item_out(db: Session, item: CartItem) -> dict | None:

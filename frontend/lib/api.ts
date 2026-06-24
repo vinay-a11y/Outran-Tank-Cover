@@ -1,7 +1,5 @@
 import type { CartItem } from "@/store/cart";
-import { apiClient } from "@/lib/auth-api";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api";
+import { API_BASE_URL, apiClient } from "@/lib/auth-api";
 const FETCH_TIMEOUT_MS = 5000;
 
 async function fetchWithTimeout(input: string, init?: RequestInit) {

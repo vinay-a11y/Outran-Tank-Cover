@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.app.db.session import get_db
 from backend.app.models.entities import Category, Product, ProductVariant
 from backend.app.schemas.common import ProductOut
-from backend.app.services.catalog import get_category_map, product_to_out
+from backend.app.services.catalog import get_category_map, product_load_options, product_to_out, serialize_products
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -12,24 +12,13 @@ router = APIRouter(prefix="/products", tags=["products"])
 def _load_products_stmt():
     return (
         select(Product)
-        .options(
-            selectinload(Product.images),
-            selectinload(Product.variants).selectinload(ProductVariant.images),
-        )
+        .options(*product_load_options())
         .where(Product.is_active == True)
     )
 
 
 def _serialize_products(products: list[Product], db: Session) -> list[dict]:
-    category_map = get_category_map(db)
-    return [
-        product_to_out(
-            product,
-            category_map.get(product.category_id, ("Tank Covers", "tank-covers"))[0],
-            category_map.get(product.category_id, ("Tank Covers", "tank-covers"))[1],
-        )
-        for product in products
-    ]
+    return serialize_products(products, db)
 
 
 def _apply_filters(
