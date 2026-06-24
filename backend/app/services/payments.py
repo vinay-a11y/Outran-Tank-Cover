@@ -40,7 +40,7 @@ def create_payment_order(amount_rupees: float, receipt: str) -> dict:
 def verify_payment_signature(order_id: str, payment_id: str, signature: str) -> bool:
     key_secret = settings.razorpay_key_secret.strip()
     if not key_secret:
-        return signature == "dev_signature"
+        return False
     message = f"{order_id}|{payment_id}".encode()
     expected = hmac.new(key_secret.encode(), message, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)

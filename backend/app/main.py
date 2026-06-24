@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter
@@ -12,9 +14,13 @@ from backend.app.services.catalog import seed_catalog
 
 limiter = Limiter(key_func=get_remote_address)
 
+_is_production = os.getenv("ENV", "development").lower() == "production"
+
 app = FastAPI(
     title="OUTRAN Commerce API",
-    version="2.0.0"
+    version="2.0.0",
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
 )
 
 app.state.limiter = limiter
@@ -25,8 +31,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"]
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Admin-Key", "X-Razorpay-Signature"],
 )
 
 app.include_router(products.router, prefix="/api")
